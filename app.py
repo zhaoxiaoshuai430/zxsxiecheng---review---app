@@ -18,6 +18,14 @@ import re
 import os
 import math 
 from datetime import datetime
+import os
+
+# 读取环境变量中的 API 密钥
+QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+
+if not QWEN_API_KEY:
+    st.error("❌ 未设置 QWEN_API_KEY！请在 Streamlit Cloud 后台配置 Secrets。")
+    st.stop()
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="centered")
@@ -532,6 +540,7 @@ elif page == "💬 智能评论回复":
 if page == "💬 智能评论回复" and not QWEN_API_KEY:
 
     st.warning("⚠️ 请设置环境变量 `QWEN_API_KEY`。详情见 README.md")
+
 
 
 
