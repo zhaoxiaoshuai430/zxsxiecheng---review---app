@@ -16,11 +16,11 @@ import requests
 import time
 import re
 import os
-import math
+import math 
 from datetime import datetime
 
 # ==================== 页面配置 ====================
-st.set_page_config(page_title=" 酒店OTA", layout="centered")
+st.set_page_config(page_title=" Hotel OTA", layout="centered")
 
 # ==================== 初始化 session_state ====================
 if 'history' not in st.session_state:
@@ -532,4 +532,5 @@ elif page == "💬 智能评论回复":
 if page == "💬 智能评论回复" and not QWEN_API_KEY:
 
     st.warning("⚠️ 请设置环境变量 `QWEN_API_KEY`。详情见 README.md")
+
 
