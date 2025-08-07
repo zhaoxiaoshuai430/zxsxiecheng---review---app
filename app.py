@@ -1,3 +1,5 @@
+import streamlit as st
+st.write("Hello, I'm deploying!")
 # -*- coding: utf-8 -*-
 """
 🏨 酒店运营一体化系统
@@ -528,4 +530,5 @@ elif page == "💬 智能评论回复":
 
 # ============ API Key 提醒 ============
 if page == "💬 智能评论回复" and not QWEN_API_KEY:
+
     st.warning("⚠️ 请设置环境变量 `QWEN_API_KEY`。详情见 README.md")
