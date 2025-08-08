@@ -296,50 +296,86 @@ elif page == "📈 评论维度分析":
             st.exception(e)
 # ============ 4. 智能评论回复 ============
 elif page == "💬 智能评论回复":
-    st.title("💬 智能评论回复生成器")
+    st.title("智能评论回复生成器")
 
-    st.markdown("输入客人评论，系统将生成得体的回复。")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        review_input = st.text_area("粘贴客人评论", height=180, placeholder="请在此输入或粘贴客人在携程/美团等平台的评论...")
+    with col2:
+        guest_name = st.text_input("客人姓名", "尊敬的宾客")
+        review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
 
-    comment = st.text_area("客人评论", height=150, placeholder="请输入客人的真实评论...")
-
-    if st.button("生成回复"):
-        if not comment.strip():
-            st.warning("请先输入评论内容")
+    if st.button("✨ 生成回复", type="primary"):
+        if not review_input.strip():
+            st.warning("请输入评论内容！")
         else:
             with st.spinner("正在生成回复..."):
-                time.sleep(1.5)  # 模拟延迟
+                prompt = generate_prompt(
+                    review_input, guest_name,
+                    st.session_state.hotel_name,
+                    st.session_state.hotel_nickname,
+                    review_source
+                )
+                raw_reply = call_qwen_api(prompt)
+                reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
+                word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
-                lower_comment = comment.lower()
-                is_positive = any(word in lower_comment for word in ['好', '棒', '赞', '满意', '不错', '喜欢'])
-                is_negative = any(word in lower_comment for word in ['差', '糟', '烂', '坑', '吵', '脏', '贵', '问题'])
+            st.markdown(f"""
+            <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
+            {reply}
+            </div>
+            <p style="color: #888; font-size: 14px; margin-top: 4px;">
+            🔤 字数：{word_count} / 200（目标区间：100–200）
+            </p>
+            """, unsafe_allow_html=True)
 
-                if is_positive and not is_negative:
-                    reply = f"亲爱的客人，您好！\n\n非常感谢您对{st.session_state.hotel_name}的认可与好评！看到您对我们的服务/设施感到满意，我们全体工作人员都倍感欣慰。您的满意是我们前进的最大动力！\n\n期待您再次光临，我们将继续为您提供温馨、舒适的入住体验！\n\n祝您生活愉快，万事如意！\n\n{st.session_state.hotel_nickname} 敬上"
-                elif is_negative:
-                    reply = f"亲爱的客人，您好！\n\n非常抱歉听到您此次的入住体验未能达到您的期望。关于您提到的 [具体问题，如：噪音/卫生/服务等]，我们已第一时间反馈至相关部门进行核查与改进。\n\n您的反馈对我们至关重要，帮助我们不断提升服务质量。我们诚挚地希望能有机会弥补此次的遗憾，期待您再次光临时，能为您带来焕然一新的入住体验。\n\n祝您顺心如意！\n\n{st.session_state.hotel_nickname} 敬上"
-                else:
-                    reply = f"亲爱的客人，您好！\n\n感谢您选择入住{st.session_state.hotel_name}并分享您的体验。我们已认真阅读您的反馈。\n\n对于您提到的方面，我们会持续关注并努力优化，力求为每一位客人提供更完美的服务。\n\n期待您的再次光临，祝您一切顺利！\n\n{st.session_state.hotel_nickname} 敬上"
+            st.markdown("""
+            <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+            <button id="copy-btn" style="margin-top: 10px; padding: 8px 16px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                📋 复制回复
+            </button>
+            <script>
+            const btn = document.getElementById('copy-btn');
+            const text = document.querySelector('div[style*="background-color: #000000"]').innerText;
+            const clipboard = new ClipboardJS('#copy-btn', { text: () => text });
+            clipboard.on('success', function(e) {
+                btn.innerText = '✅ 已复制！';
+                setTimeout(() => { btn.innerText = '📋 复制回复'; }, 2000);
+            });
+            </script>
+            """, unsafe_allow_html=True)
 
-                st.subheader("生成的回复：")
-                st.markdown(f"<div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-family: sans-serif;'>{reply}</div>", unsafe_allow_html=True)
-
+            if st.button("💾 保存到历史"):
                 st.session_state.history.append({
-                    "comment": comment,
+                    "time": time.strftime("%H:%M"),
+                    "hotel": st.session_state.hotel_name,
+                    "name": guest_name,
+                    "review": review_input[:50] + "...",
                     "reply": reply,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                    "word_count": word_count
                 })
+                st.success("已保存至历史记录")
 
     if st.session_state.history:
-        st.markdown("---")
-        st.subheader("📝 历史记录")
-        for idx, item in enumerate(reversed(st.session_state.history[-5:]), 1):
-            with st.expander(f"记录 {idx} - {item['timestamp']}"):
-                st.markdown(f"**评论：** {item['comment']}")
-                st.markdown(f"**回复：** {item['reply']}")
+        st.subheader("🕒 历史记录")
+        for idx, h in enumerate(reversed(st.session_state.history)):
+            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']} | {h['word_count']}字"):
+                st.markdown(f"""
+                <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
+                {h['reply']}
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"🗑️ 删除记录 {idx}", key=f"del_{idx}"):
+                    st.session_state.history.pop(-idx-1)
+                    st.experimental_rerun()
+# ============ API Key 提醒 ============
+if page == "💬 智能评论回复" and (not QWEN_API_KEY or not QWEN_API_KEY.startswith("sk-")):
+    st.warning("⚠️ 请设置有效的 Qwen API Key（通过环境变量 `QWEN_API_KEY`）")
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
 
 
 
