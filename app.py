@@ -210,28 +210,6 @@ elif page == "📊 美团评分提升计算器":
 elif page == "📈 评论维度分析":
     st.title("📈 评论维度分析（基于文本挖掘）")
 
-    # === 注入 CSS 样式，设置全局字体为 12px ===
-    st.markdown(
-        """
-        <style>
-        html, body, [class*="css"] {
-            font-size: 12px !important;
-        }
-        .stText, .stMarkdown, .stDataFrame, .stTextInput, .stTextArea, .stButton, .stSelectbox {
-            font-size: 12px !important;
-        }
-        /* 子标题和标题可适当保留可读性 */
-        h1, h2, h3 {
-            font-size: 16px !important;
-        }
-        .small-text {
-            font-size: 12px !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
     st.markdown("上传包含 **评论内容** 列的 Excel 文件，系统将自动提取标签并分析情感。")
 
     with st.expander("📄 示例格式"):
@@ -288,12 +266,11 @@ elif page == "📈 评论维度分析":
 
                     with col2:
                         st.subheader("📋 评分详情（文本列表）")
-                        st.markdown("<div class='small-text'>", unsafe_allow_html=True)
+                        # 将树状图替换为文本列表
                         st.markdown("#### 所有维度评分：")
                         for dimension, score in all_scores.items():
                             color = "🟢" if score >= 4.78 else "🔴"
-                            st.markdown(f"<span class='small-text'>{color} **{dimension}**: {score:.2f}</span>", unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
+                            st.markdown(f"{color} **{dimension}**: {score:.2f}")
 
                     # 优化建议
                     st.subheader("💡 优化建议（可修改）")
@@ -303,7 +280,7 @@ elif page == "📈 评论维度分析":
                     else:
                         for dim, score in needs_improvement.items():
                             default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
-                            st.markdown(f"### 📌 {dim} ({score:.2f})", unsafe_allow_html=True)
+                            st.markdown(f"### 📌 {dim} ({score:.2f})")
                             st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
                     # 导出原始数据
@@ -361,6 +338,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
 
 
 
