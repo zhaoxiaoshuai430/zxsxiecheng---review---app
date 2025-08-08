@@ -15,6 +15,7 @@ from io import BytesIO
 import base64
 import jieba
 import time
+import datetime
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="wide")
@@ -339,6 +340,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
 
 
 
