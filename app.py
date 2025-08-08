@@ -23,7 +23,7 @@ if 'history' not in st.session_state:
     st.session_state.history = []
 
 if 'hotel_name' not in st.session_state:
-    st.session_state.hotel_name = "星辰花园酒店"
+    st.session_state.hotel_name = "中油花园酒店"
 if 'hotel_nickname' not in st.session_state:
     st.session_state.hotel_nickname = "小油"
 
@@ -371,3 +371,4 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
