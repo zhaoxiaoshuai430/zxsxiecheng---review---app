@@ -40,8 +40,38 @@ def to_excel(df):
 
 # ==================== 工具函数：加权评分计算 ====================
 def calculate_time_and_rank_weighted_score(df, score_col, date_col="入住时间"):
-    # （保持不变）
-    pass  # 为简洁省略，实际代码中保留
+    """
+    计算考虑时间和排名权重的加权平均分
+    - 时间权重：越近的评论权重越高
+    - 排名权重：排名越靠前的评论权重越高（假设数据已按排名排序）
+    """
+    if date_col not in df.columns:
+        st.warning(f"⚠️ 未找到日期列 '{date_col}'，使用简单平均。")
+        return df[score_col].mean()
+
+    df = df.dropna(subset=[score_col, date_col]).copy()
+    if len(df) == 0:
+        return 0.0
+
+    # 处理日期
+    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+    df = df.dropna(subset=[date_col])
+    if len(df) == 0:
+        return 0.0
+
+    latest_date = df[date_col].max()
+    df['days_diff'] = (latest_date - df[date_col]).dt.days
+    max_days = df['days_diff'].max()
+    df['time_weight'] = 1 / (1 + df['days_diff'])  # 越近权重越高
+
+    # 假设数据已按排名排序，排名权重：排名越前权重越高
+    df['rank'] = range(1, len(df) + 1)
+    df['rank_weight'] = 1 / df['rank']
+
+    # 综合权重
+    df['final_weight'] = df['time_weight'] * df['rank_weight']
+    weighted_avg = (df[score_col] * df['final_weight']).sum() / df['final_weight'].sum()
+    return round(weighted_avg, 2)
 
 # ==================== 工具函数：情感分析与标签提取 ====================
 TAG_KEYWORDS = {
@@ -63,17 +93,19 @@ NEGATIVE_WORDS = {'差', '糟', '烂', '坑', '差劲', '失望', '糟糕', '难
                   '贵', '偏', '慢', '不值', '问题', '敷衍', '拖延', '恶劣'}
 
 def preprocess(text):
+    """文本预处理：去除非中文/英文字符，分词"""
     text = re.sub(r'[^\u4e00-\u9fa5a-zA-Z]', '', str(text).lower())
     words = jieba.lcut(text)
     return [w for w in words if len(w) >= 2]
 
 def get_sentiment_score(text):
+    """基于关键词的情感分析"""
     words = preprocess(text)
     pos_count = sum(1 for w in words if w in POSITIVE_WORDS)
     neg_count = sum(1 for w in words if w in NEGATIVE_WORDS)
     total = pos_count + neg_count
     if total == 0:
-        return 3.8
+        return 3.8  # 默认中性分
     if pos_count > neg_count:
         return min(5.0, 4.5 + 0.5 * (pos_count / total))
     elif neg_count > pos_count:
@@ -82,6 +114,7 @@ def get_sentiment_score(text):
         return 3.8
 
 def extract_tags_with_scores(comments):
+    """从评论中提取标签并计算情感得分"""
     tag_scores = defaultdict(list)
     for comment in comments.dropna():
         for tag, keywords in TAG_KEYWORDS.items():
@@ -134,7 +167,69 @@ if st.sidebar.button("💾 保存配置"):
 
 # ==================== 主页面逻辑 ====================
 
-# ... (其他页面代码保持不变)
+# ============ 1. 携程评分计算器 ============
+if page == "📊 携程评分计算器":
+    st.title("携程综合评分计算器")
+    st.markdown("输入各维度原始分，系统自动计算综合分。")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        location = st.number_input("位置交通", 1.0, 5.0, 4.5, 0.1)
+    with col2:
+        cleanliness = st.number_input("卫生", 1.0, 5.0, 4.6, 0.1)
+    with col3:
+        service = st.number_input("服务", 1.0, 5.0, 4.7, 0.1)
+
+    col4, col5 = st.columns(2)
+    with col4:
+        facilities = st.number_input("设施", 1.0, 5.0, 4.4, 0.1)
+    with col5:
+        comfort = st.number_input("舒适度", 1.0, 5.0, 4.5, 0.1)
+
+    # 计算综合分
+    total_score = (location * 0.1 + cleanliness * 0.25 + service * 0.25 +
+                   facilities * 0.15 + comfort * 0.25)
+    total_score = round(total_score, 1)
+
+    st.markdown("---")
+    st.subheader("计算结果")
+    st.markdown(f"<h2 style='color: #2E8B57;'>综合评分：{total_score} ⭐</h2>", unsafe_allow_html=True)
+
+    # 优秀线
+    excellent_line = 4.78
+    if total_score >= excellent_line:
+        st.success(f"✅ 达到优秀线 ({excellent_line})")
+    else:
+        diff = excellent_line - total_score
+        st.warning(f"⚠️ 距优秀线差 {diff:.1f} 分")
+
+# ============ 2. 美团评分计算器 ============
+elif page == "📊 美团评分计算器":
+    st.title("美团综合评分计算器")
+    st.markdown("输入各维度原始分，系统自动计算综合分。")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        hygiene = st.number_input("卫生", 1.0, 5.0, 4.5, 0.1)
+    with col2:
+        service = st.number_input("服务", 1.0, 5.0, 4.6, 0.1)
+    with col3:
+        amenities = st.number_input("设施", 1.0, 5.0, 4.3, 0.1)
+
+    # 美团权重
+    total_score = (hygiene * 0.4 + service * 0.3 + amenities * 0.3)
+    total_score = round(total_score, 1)
+
+    st.markdown("---")
+    st.subheader("计算结果")
+    st.markdown(f"<h2 style='color: #2E8B57;'>综合评分：{total_score} ⭐</h2>", unsafe_allow_html=True)
+
+    excellent_line = 4.78
+    if total_score >= excellent_line:
+        st.success(f"✅ 达到优秀线 ({excellent_line})")
+    else:
+        diff = excellent_line - total_score
+        st.warning(f"⚠️ 距优秀线差 {diff:.1f} 分")
 
 # ============ 3. 评论维度分析（修改：自动生成连贯文本） ============
 elif page == "📈 评论维度分析":
@@ -260,3 +355,54 @@ elif page == "📈 评论维度分析":
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
             st.exception(e)
+
+# ============ 4. 智能评论回复 ============
+elif page == "💬 智能评论回复":
+    st.title("💬 智能评论回复生成器")
+
+    st.markdown("输入客人评论，系统将生成得体的回复。")
+
+    comment = st.text_area("客人评论", height=150, placeholder="请输入客人的真实评论...")
+
+    if st.button("生成回复"):
+        if not comment.strip():
+            st.warning("请先输入评论内容")
+        else:
+            with st.spinner("正在生成回复..."):
+                time.sleep(1.5)  # 模拟生成延迟
+
+                # 简单的情感判断
+                lower_comment = comment.lower()
+                is_positive = any(word in lower_comment for word in ['好', '棒', '赞', '满意', '不错', '喜欢'])
+                is_negative = any(word in lower_comment for word in ['差', '糟', '烂', '坑', '吵', '脏', '贵', '问题'])
+
+                # 生成回复
+                if is_positive and not is_negative:
+                    reply = f"亲爱的客人，您好！\n\n非常感谢您对{st.session_state.hotel_name}的认可与好评！看到您对我们的服务/设施感到满意，我们全体工作人员都倍感欣慰。您的满意是我们前进的最大动力！\n\n期待您再次光临，我们将继续为您提供温馨、舒适的入住体验！\n\n祝您生活愉快，万事如意！\n\n{st.session_state.hotel_nickname} 敬上"
+                elif is_negative:
+                    reply = f"亲爱的客人，您好！\n\n非常抱歉听到您此次的入住体验未能达到您的期望。关于您提到的 [具体问题，如：噪音/卫生/服务等]，我们已第一时间反馈至相关部门进行核查与改进。\n\n您的反馈对我们至关重要，帮助我们不断提升服务质量。我们诚挚地希望能有机会弥补此次的遗憾，期待您再次光临时，能为您带来焕然一新的入住体验。\n\n祝您顺心如意！\n\n{st.session_state.hotel_nickname} 敬上"
+                else:
+                    reply = f"亲爱的客人，您好！\n\n感谢您选择入住{st.session_state.hotel_name}并分享您的体验。我们已认真阅读您的反馈。\n\n对于您提到的方面，我们会持续关注并努力优化，力求为每一位客人提供更完美的服务。\n\n期待您的再次光临，祝您一切顺利！\n\n{st.session_state.hotel_nickname} 敬上"
+
+                st.subheader("生成的回复：")
+                st.markdown(f"<div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-family: sans-serif;'>{reply}</div>", unsafe_allow_html=True)
+
+                # 保存到历史
+                st.session_state.history.append({
+                    "comment": comment,
+                    "reply": reply,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
+                })
+
+    # 历史记录
+    if st.session_state.history:
+        st.markdown("---")
+        st.subheader("📝 历史记录")
+        for idx, item in enumerate(reversed(st.session_state.history[-5:]), 1):
+            with st.expander(f"记录 {idx} - {item['timestamp']}"):
+                st.markdown(f"**评论：** {item['comment']}")
+                st.markdown(f"**回复：** {item['reply']}")
+
+# ==================== 尾部信息 ====================
+st.sidebar.divider()
+st.sidebar.caption("© 2025 酒店运营工具")
