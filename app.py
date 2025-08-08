@@ -18,6 +18,18 @@ import time
 import datetime
 import os  # 新增：用于读取环境变量
 import requests  # 新增：用于调用 Qwen API
+import streamlit as st
+
+# 初始化 session_state 变量
+if 'session_nickname' not in st.session_state:
+    st.session_state['session_nickname'] = "默认昵称"
+
+# 获取用户输入的昵称
+user_input = st.text_input("请输入您的昵称", value=st.session_state['session_nickname'])
+st.session_state['session_nickname'] = user_input
+
+# 使用 session_state 中的昵称
+nickname = st.session_state['session_nickname']
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="wide")
@@ -516,5 +528,6 @@ elif page == "💬 智能评论回复":
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
-st.sidebar.caption("© 2025 酒店运营工具")
+st.sidebar.caption(f"@ 2025 {nickname} 酒店运营工具")
+
 
