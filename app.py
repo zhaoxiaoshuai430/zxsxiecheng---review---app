@@ -298,6 +298,23 @@ elif page == "📈 评论维度分析":
 elif page == "💬 智能评论回复":
     st.title("智能评论回复生成器")
 
+    # ====== 🔐 安全读取 API Key（推荐方式）======
+    try:
+        QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
+    except KeyError:
+        QWEN_API_KEY = os.getenv("QWEN_API_KEY")  # 本地开发时可用环境变量回退
+
+    if not QWEN_API_KEY or not QWEN_API_KEY.startswith("sk-"):
+        st.warning("⚠️ 请设置有效的 Qwen API Key")
+        st.markdown("""
+        **设置方法：**
+        1. 在 Streamlit Cloud 的应用设置中打开 **Secrets**；
+        2. 添加：`QWEN_API_KEY = "sk-你的密钥"`；
+        3. 重新部署。
+        """)
+        st.stop()  # 阻止后续执行
+    # =====================================
+
     col1, col2 = st.columns([3, 1])
     with col1:
         review_input = st.text_area("粘贴客人评论", height=180, placeholder="请在此输入或粘贴客人在携程/美团等平台的评论...")
@@ -316,7 +333,7 @@ elif page == "💬 智能评论回复":
                     st.session_state.hotel_nickname,
                     review_source
                 )
-                raw_reply = call_qwen_api(prompt)
+                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)  # 建议把 api_key 作为参数传入
                 reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
                 word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
@@ -367,14 +384,11 @@ elif page == "💬 智能评论回复":
                 """, unsafe_allow_html=True)
                 if st.button(f"🗑️ 删除记录 {idx}", key=f"del_{idx}"):
                     st.session_state.history.pop(-idx-1)
-                    st.experimental_rerun()
-# ============ API Key 提醒 ============
-if page == "💬 智能评论回复" and (not QWEN_API_KEY or not QWEN_API_KEY.startswith("sk-")):
-    st.warning("⚠️ 请设置有效的 Qwen API Key（通过环境变量 `QWEN_API_KEY`）")
-
+                    st.rerun()  # 替代已弃用的 st.experimental_rerun()
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
 
 
 
