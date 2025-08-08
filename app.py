@@ -1,23 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 🏨 酒店运营一体化系统
-功能：携程/美团评分计算 + 评论维度分析（文本挖掘）+ 智能评论回复
+功能：携程/美团评分预测 + 评论维度分析 + 智能评论回复
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import math
-import requests
-import time
 import re
-import os
-from datetime import datetime
-import jieba
-from collections import defaultdict
 import matplotlib.pyplot as plt
+from collections import defaultdict
 from io import BytesIO
 import base64
+import jieba
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="wide")
@@ -37,41 +33,6 @@ def to_excel(df):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='原始数据')
     return output.getvalue()
-
-# ==================== 工具函数：加权评分计算 ====================
-def calculate_time_and_rank_weighted_score(df, score_col, date_col="入住时间"):
-    """
-    计算考虑时间和排名权重的加权平均分
-    - 时间权重：越近的评论权重越高
-    - 排名权重：排名越靠前的评论权重越高（假设数据已按排名排序）
-    """
-    if date_col not in df.columns:
-        st.warning(f"⚠️ 未找到日期列 '{date_col}'，使用简单平均。")
-        return df[score_col].mean()
-
-    df = df.dropna(subset=[score_col, date_col]).copy()
-    if len(df) == 0:
-        return 0.0
-
-    # 处理日期
-    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-    df = df.dropna(subset=[date_col])
-    if len(df) == 0:
-        return 0.0
-
-    latest_date = df[date_col].max()
-    df['days_diff'] = (latest_date - df[date_col]).dt.days
-    max_days = df['days_diff'].max()
-    df['time_weight'] = 1 / (1 + df['days_diff'])  # 越近权重越高
-
-    # 假设数据已按排名排序，排名权重：排名越前权重越高
-    df['rank'] = range(1, len(df) + 1)
-    df['rank_weight'] = 1 / df['rank']
-
-    # 综合权重
-    df['final_weight'] = df['time_weight'] * df['rank_weight']
-    weighted_avg = (df[score_col] * df['final_weight']).sum() / df['final_weight'].sum()
-    return round(weighted_avg, 2)
 
 # ==================== 工具函数：情感分析与标签提取 ====================
 TAG_KEYWORDS = {
@@ -130,10 +91,6 @@ def extract_tags_with_scores(comments):
 
 # ==================== 优化建议库 ====================
 SUGGESTIONS = {
-    '总评分': '整体体验需提升，建议从服务和设施入手，加强客户反馈闭环管理。',
-    '设施评分': '检查老旧设备，制定更新计划，增加智能化设施如智能门锁、语音助手。',
-    '服务评分': '加强员工服务意识培训，建立快速响应机制处理差评。',
-    '卫生评分': '加强清洁流程监督，引入第三方质检或公示消毒记录增强信任。',
     '位置': '优化导航信息，与周边商圈合作提供折扣弥补位置短板。',
     '交通': '提供免费接驳车或与打车平台合作，提升客人便利性。',
     '早餐': '丰富早餐品类，增加本地特色和健康选项，提升餐品温度。',
@@ -149,8 +106,8 @@ SUGGESTIONS = {
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
 page = st.sidebar.radio("选择功能", [
-    "📊 携程评分计算器",
-    "📊 美团评分计算器",
+    "📊 携程评分提升计算器",
+    "📊 美团评分提升计算器",
     "📈 评论维度分析",
     "💬 智能评论回复"
 ])
@@ -167,71 +124,89 @@ if st.sidebar.button("💾 保存配置"):
 
 # ==================== 主页面逻辑 ====================
 
-# ============ 1. 携程评分计算器 ============
-if page == "📊 携程评分计算器":
-    st.title("携程综合评分计算器")
-    st.markdown("输入各维度原始分，系统自动计算综合分。")
+# ============ 1. 携程评分计算器（完全保留您提供的逻辑） ============
+if page == "📊 携程评分提升计算器":
+    st.title("携程酒店评分提升计算器")
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        location = st.number_input("位置交通", 1.0, 5.0, 4.5, 0.1)
+        weighted_current_score = st.number_input("当前加权综合评分", 0.0, 5.0, 4.52, 0.01)
+        score_3_years_ago = st.number_input("三年前评分", 0.0, 5.0, 4.70, 0.01)
     with col2:
-        cleanliness = st.number_input("卫生", 1.0, 5.0, 4.6, 0.1)
+        reviews_last_3_years = st.number_input("近三年评价数", 0, 10000, 500, 1)
+        reviews_before_3_years = st.number_input("三年前评价数", 0, 10000, 300, 1)
     with col3:
-        service = st.number_input("服务", 1.0, 5.0, 4.7, 0.1)
+        target_score = st.number_input("目标评分", 0.0, 5.0, 4.80, 0.01)
 
-    col4, col5 = st.columns(2)
-    with col4:
-        facilities = st.number_input("设施", 1.0, 5.0, 4.4, 0.1)
-    with col5:
-        comfort = st.number_input("舒适度", 1.0, 5.0, 4.5, 0.1)
+    def calculate_xiecheng():
+        effective_old = reviews_before_3_years / 10.0
+        total_weight = reviews_last_3_years + effective_old
+        inferred_recent_score = (
+            (weighted_current_score * total_weight - score_3_years_ago * effective_old)
+            / reviews_last_3_years
+        )
+        if weighted_current_score >= target_score:
+            return 0, inferred_recent_score
 
-    # 计算综合分
-    total_score = (location * 0.1 + cleanliness * 0.25 + service * 0.25 +
-                   facilities * 0.15 + comfort * 0.25)
-    total_score = round(total_score, 1)
+        numerator = (target_score * total_weight - score_3_years_ago * effective_old) - inferred_recent_score * reviews_last_3_years
+        denominator = 5.0 - target_score
+        if denominator <= 0:
+            raise ValueError("目标评分过高")
+        required = math.ceil(numerator / denominator)
+        return max(0, required), inferred_recent_score
 
-    st.markdown("---")
-    st.subheader("计算结果")
-    st.markdown(f"<h2 style='color: #2E8B57;'>综合评分：{total_score} ⭐</h2>", unsafe_allow_html=True)
+    try:
+        req, inferred = calculate_xiecheng()
+        st.success(f"✅ 反推出近三年真实评分为：**{inferred:.3f} 分**")
+        if req == 0:
+            st.info(f"🎉 当前评分已达到目标 **{target_score:.2f}** 分")
+        else:
+            st.warning(f"📈 需要至少 **{req}** 条 5 星好评")
+    except Exception as e:
+        st.error(f"❌ 计算错误：{str(e)}")
 
-    # 优秀线
-    excellent_line = 4.78
-    if total_score >= excellent_line:
-        st.success(f"✅ 达到优秀线 ({excellent_line})")
-    else:
-        diff = excellent_line - total_score
-        st.warning(f"⚠️ 距优秀线差 {diff:.1f} 分")
-
-# ============ 2. 美团评分计算器 ============
-elif page == "📊 美团评分计算器":
-    st.title("美团综合评分计算器")
-    st.markdown("输入各维度原始分，系统自动计算综合分。")
+# ============ 2. 美团评分计算器（完全保留您提供的逻辑） ============
+elif page == "📊 美团评分提升计算器":
+    st.title("美团酒店评分提升计算器")
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        hygiene = st.number_input("卫生", 1.0, 5.0, 4.5, 0.1)
+        weighted_current_score = st.number_input("当前加权综合评分", 0.0, 5.0, 4.52, 0.01)
+        score_1_year_ago = st.number_input("一年前评分", 0.0, 5.0, 4.60, 0.01)
     with col2:
-        service = st.number_input("服务", 1.0, 5.0, 4.6, 0.1)
+        reviews_last_1_year = st.number_input("近一年评价数", 0, 10000, 300, 1)
+        reviews_before_1_year = st.number_input("一年前评价数", 0, 10000, 500, 1)
     with col3:
-        amenities = st.number_input("设施", 1.0, 5.0, 4.3, 0.1)
+        target_score = st.number_input("目标评分", 0.0, 5.0, 4.80, 0.01)
 
-    # 美团权重
-    total_score = (hygiene * 0.4 + service * 0.3 + amenities * 0.3)
-    total_score = round(total_score, 1)
+    def calculate_meituan():
+        effective_old = reviews_before_1_year / 10.0
+        total_weight = reviews_last_1_year + effective_old
+        inferred_recent_score = (
+            (weighted_current_score * total_weight - score_1_year_ago * effective_old)
+            / reviews_last_1_year
+        )
+        if weighted_current_score >= target_score:
+            return 0, inferred_recent_score
 
-    st.markdown("---")
-    st.subheader("计算结果")
-    st.markdown(f"<h2 style='color: #2E8B57;'>综合评分：{total_score} ⭐</h2>", unsafe_allow_html=True)
+        numerator = (target_score * total_weight - score_1_year_ago * effective_old) - inferred_recent_score * reviews_last_1_year
+        denominator = 5.0 - target_score
+        if denominator <= 0:
+            raise ValueError("目标评分过高")
+        required = math.ceil(numerator / denominator)
+        return max(0, required), inferred_recent_score
 
-    excellent_line = 4.78
-    if total_score >= excellent_line:
-        st.success(f"✅ 达到优秀线 ({excellent_line})")
-    else:
-        diff = excellent_line - total_score
-        st.warning(f"⚠️ 距优秀线差 {diff:.1f} 分")
+    try:
+        req, inferred = calculate_meituan()
+        st.success(f"✅ 反推出近一年真实评分为：**{inferred:.3f} 分**")
+        if req == 0:
+            st.info(f"🎉 当前评分已达标")
+        else:
+            st.warning(f"📈 需要至少 **{req}** 条 5 星好评")
+    except Exception as e:
+        st.error(f"❌ 计算错误：{str(e)}")
 
-# ============ 3. 评论维度分析（修改：自动生成连贯文本） ============
+# ============ 3. 评论维度分析（自动生成分析文本） ============
 elif page == "📈 评论维度分析":
     st.title("📈 评论维度分析（基于文本挖掘）")
 
@@ -312,10 +287,9 @@ elif page == "📈 评论维度分析":
                     with col2:
                         st.pyplot(fig2)
 
-                    # --- 核心修改：自动生成连贯的分析文本 ---
+                    # --- 核心：自动生成分析报告 ---
                     st.subheader("📝 分析报告")
 
-                    # 1. 总体评价
                     avg_score = all_scores.mean()
                     if avg_score >= 4.5:
                         overall_status = "整体表现优秀"
@@ -326,13 +300,11 @@ elif page == "📈 评论维度分析":
 
                     report_parts = [f"根据对 {len(df)} 条客人评论的分析，{st.session_state.hotel_name} 的 {overall_status}。"]
 
-                    # 2. 亮点维度（评分 >= 4.78）
                     strengths = all_scores[all_scores >= excellent_line]
                     if len(strengths) > 0:
                         strength_list = [f"{dim}（{score:.2f}分）" for dim, score in strengths.items()]
                         report_parts.append(f"在以下 {len(strengths)} 个维度表现尤为突出：{', '.join(strength_list)}。")
 
-                    # 3. 待改进维度（评分 < 4.78）
                     weaknesses = all_scores[all_scores < excellent_line]
                     if len(weaknesses) > 0:
                         report_parts.append("需要重点关注并改进的维度包括：")
@@ -340,13 +312,10 @@ elif page == "📈 评论维度分析":
                             suggestion = SUGGESTIONS.get(dim, "建议加强管理。")
                             report_parts.append(f"  • **{dim}**（{score:.2f}分）：{suggestion}")
 
-                    # 4. 生成最终文本
                     auto_text = "\n\n".join(report_parts)
                     st.markdown(auto_text)
 
-                    # --- 结束 ---
-
-                    # 导出原始数据
+                    # --- 导出功能 ---
                     excel_data = to_excel(df)
                     b64 = base64.b64encode(excel_data).decode()
                     href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
@@ -369,14 +338,12 @@ elif page == "💬 智能评论回复":
             st.warning("请先输入评论内容")
         else:
             with st.spinner("正在生成回复..."):
-                time.sleep(1.5)  # 模拟生成延迟
+                time.sleep(1.5)  # 模拟延迟
 
-                # 简单的情感判断
                 lower_comment = comment.lower()
                 is_positive = any(word in lower_comment for word in ['好', '棒', '赞', '满意', '不错', '喜欢'])
                 is_negative = any(word in lower_comment for word in ['差', '糟', '烂', '坑', '吵', '脏', '贵', '问题'])
 
-                # 生成回复
                 if is_positive and not is_negative:
                     reply = f"亲爱的客人，您好！\n\n非常感谢您对{st.session_state.hotel_name}的认可与好评！看到您对我们的服务/设施感到满意，我们全体工作人员都倍感欣慰。您的满意是我们前进的最大动力！\n\n期待您再次光临，我们将继续为您提供温馨、舒适的入住体验！\n\n祝您生活愉快，万事如意！\n\n{st.session_state.hotel_nickname} 敬上"
                 elif is_negative:
@@ -387,14 +354,12 @@ elif page == "💬 智能评论回复":
                 st.subheader("生成的回复：")
                 st.markdown(f"<div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-family: sans-serif;'>{reply}</div>", unsafe_allow_html=True)
 
-                # 保存到历史
                 st.session_state.history.append({
                     "comment": comment,
                     "reply": reply,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
                 })
 
-    # 历史记录
     if st.session_state.history:
         st.markdown("---")
         st.subheader("📝 历史记录")
