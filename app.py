@@ -1,9 +1,7 @@
-import streamlit as st
-st.write("Hello, I'm deploying!")
 # -*- coding: utf-8 -*-
 """
 🏨 酒店运营一体化系统
-功能：携程/美团评分计算 + 评论维度分析 + 智能评论回复
+功能：携程/美团评分计算 + 评论维度分析（文本挖掘）+ 智能评论回复
 """
 
 import streamlit as st
@@ -16,16 +14,15 @@ import requests
 import time
 import re
 import os
-import math 
 from datetime import datetime
-import os
+import jieba
+from collections import defaultdict
+import squarify
+import matplotlib
 
-# 读取环境变量中的 API 密钥
-QWEN_API_KEY = os.getenv("QWEN_API_KEY")
-
-if not QWEN_API_KEY:
-    st.error("❌ 未设置 QWEN_API_KEY！请在 Streamlit Cloud 后台配置 Secrets。")
-    st.stop()
+# 设置中文字体支持
+matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans', 'Microsoft YaHei']
+matplotlib.rcParams['axes.unicode_minus'] = False
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="centered")
@@ -39,17 +36,15 @@ if 'hotel_name' not in st.session_state:
 if 'hotel_nickname' not in st.session_state:
     st.session_state.hotel_nickname = "小油"
 
-# ==================== 工具函数 ====================
-
+# ==================== 工具函数：Excel 导出 ====================
 def to_excel(df):
-    """将 DataFrame 转为 Excel 的 bytes 数据"""
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='分析数据')
+        df.to_excel(writer, index=False, sheet_name='原始数据')
     return output.getvalue()
 
+# ==================== 工具函数：加权评分计算 ====================
 def calculate_time_and_rank_weighted_score(df, score_col, date_col="入住时间"):
-    """基于时间衰减和评分权重的加权平均分"""
     df = df.copy()
     df[score_col] = pd.to_numeric(df[score_col], errors='coerce')
     df = df.dropna(subset=[score_col, date_col])
@@ -84,8 +79,60 @@ def calculate_time_and_rank_weighted_score(df, score_col, date_col="入住时间
     final_score = max(weighted_avg - 0.20, 1.0)
     return round(final_score, 2)
 
+# ==================== 工具函数：情感分析与标签提取 ====================
+TAG_KEYWORDS = {
+    '位置': ['位置', '地段', '周边', '附近', '离', '靠近', '市中心', '地铁', '公交'],
+    '交通': ['交通', '打车', '停车', '驾车', '机场', '车站', '接驳'],
+    '早餐': ['早餐', '早饭', '餐饮', 'buffet', '餐食', '自助餐'],
+    '安静': ['安静', '噪音', '吵', '吵闹', '隔音', '清静', '安静房'],
+    '床舒适': ['床', '床垫', '睡感', '舒服', '舒不舒服', '软硬', '枕头'],
+    '房间大小': ['房间小', '房间大', '空间', '拥挤', '宽敞', '面积', '局促'],
+    '视野': ['视野', '景观', '江景', '海景', '窗景', '朝向', '夜景', 'view'],
+    '性价比': ['性价比', '价格', '划算', '贵', '便宜', '值', '物超所值'],
+    '前台': ['前台', '接待', 'check in', '入住办理', '退房', '接待员'],
+    '网络': ['Wi-Fi', '网络', '信号', '上网', '网速', 'wifi', '无线']
+}
+
+POSITIVE_WORDS = {'好', '棒', '赞', '满意', '不错', '推荐', '惊喜', '舒服', '完美', '贴心',
+                  '干净', '方便', '快捷', '温馨', '柔软', '丰富', '齐全', '优质', '热情'}
+NEGATIVE_WORDS = {'差', '糟', '烂', '坑', '差劲', '失望', '糟糕', '难用', '吵', '脏',
+                  '贵', '偏', '慢', '不值', '问题', '敷衍', '拖延', '恶劣'}
+
+def preprocess(text):
+    text = re.sub(r'[^\u4e00-\u9fa5a-zA-Z]', '', str(text).lower())
+    words = jieba.lcut(text)
+    return [w for w in words if len(w) >= 2]
+
+def get_sentiment_score(text):
+    words = preprocess(text)
+    pos_count = sum(1 for w in words if w in POSITIVE_WORDS)
+    neg_count = sum(1 for w in words if w in NEGATIVE_WORDS)
+    total = pos_count + neg_count
+    if total == 0:
+        return 3.8
+    if pos_count > neg_count:
+        return min(5.0, 4.5 + 0.5 * (pos_count / total))
+    elif neg_count > pos_count:
+        return max(1.0, 2.5 - 0.5 * (neg_count / total))
+    else:
+        return 3.8
+
+def extract_tags_with_scores(comments):
+    tag_scores = defaultdict(list)
+    for comment in comments.dropna():
+        for tag, keywords in TAG_KEYWORDS.items():
+            if any(kw in str(comment) for kw in keywords):
+                score = get_sentiment_score(str(comment))
+                tag_scores[tag].append(score)
+    final_scores = {
+        tag: round(sum(scores) / len(scores), 2)
+        for tag, scores in tag_scores.items()
+        if len(scores) > 0
+    }
+    return final_scores
+
+# ==================== 工具函数：智能评论回复 ====================
 def extract_aspects_and_sentiment(review: str) -> dict:
-    """提取评论维度与情感"""
     aspects = {
         '交通': ['地铁', '交通', '停车', '位置', '方便', '直达', '高铁', '火车站'],
         '服务': ['服务', '前台', '热情', '周到', '专业', '响应', '处理'],
@@ -119,7 +166,6 @@ def extract_aspects_and_sentiment(review: str) -> dict:
     }
 
 def generate_prompt(review: str, guest_name: str, hotel_name, hotel_nickname, review_source):
-    """生成给大模型的提示词"""
     info = extract_aspects_and_sentiment(review)
 
     tag_map = {
@@ -154,11 +200,9 @@ def generate_prompt(review: str, guest_name: str, hotel_name, hotel_nickname, re
     return prompt
 
 def call_qwen_api(prompt: str) -> str:
-    """调用通义千问API"""
-    # 从环境变量获取 API Key
     api_key = os.getenv("QWEN_API_KEY")
     if not api_key:
-        return "❌ 未设置 QWEN_API_KEY 环境变量，请在 .env 文件中配置。"
+        return "❌ 未设置 QWEN_API_KEY 环境变量，请在 Streamlit Cloud 的 Secrets 中配置。"
 
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -177,7 +221,8 @@ def call_qwen_api(prompt: str) -> str:
         }
     }
     try:
-        response = requests.post(QWEN_API_URL, headers=headers, json=payload, timeout=30)
+        response = requests.post("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+                                 headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             result = response.json()
             return result['output']['text'].strip()
@@ -187,7 +232,6 @@ def call_qwen_api(prompt: str) -> str:
         return f"🚨 请求失败：{str(e)}"
 
 def truncate_to_word_count(text: str, min_words=100, max_words=200) -> str:
-    """按汉字字符数截断文本"""
     words = [c for c in text if c.isalnum() or c in '，。！？；：""''（）【】《》、']
     content = ''.join(words)
     if len(content) <= max_words:
@@ -202,10 +246,23 @@ def truncate_to_word_count(text: str, min_words=100, max_words=200) -> str:
             truncated = content[:max_words]
         return truncated[:max_words]
 
-# ==================== API 配置 ====================
-# ✅ 使用环境变量，不再硬编码密钥
-QWEN_API_KEY = os.getenv("QWEN_API_KEY")
-QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+# ==================== 优化建议库 ====================
+SUGGESTIONS = {
+    '总评分': '整体体验需提升，建议从服务和设施入手，加强客户反馈闭环管理。',
+    '设施评分': '检查老旧设备，制定更新计划，增加智能化设施如智能门锁、语音助手。',
+    '服务评分': '加强员工服务意识培训，建立快速响应机制处理差评。',
+    '卫生评分': '加强清洁流程监督，引入第三方质检或公示消毒记录增强信任。',
+    '位置': '优化导航信息，与周边商圈合作提供折扣弥补位置短板。',
+    '交通': '提供免费接驳车或与打车平台合作，提升客人便利性。',
+    '早餐': '丰富早餐品类，增加本地特色和健康选项，提升餐品温度。',
+    '安静': '优化隔音设计，更换密封性更好的门窗，减少噪音干扰。',
+    '床舒适': '升级床垫与床品材质，提供软硬两种枕头供客人选择。',
+    '房间大小': '优化小房型空间布局，推出“大房型优先升级”优惠活动。',
+    '视野': '定期清洁窗户与阳台，避免景观遮挡，拍摄高质量宣传图。',
+    '性价比': '调整价格策略，推出不同时段优惠套餐，增加增值服务。',
+    '前台': '缩短入住/退房等待时间，推行自助机或移动端办理。',
+    '网络': '升级Wi-Fi带宽，确保全区域稳定覆盖，设置一键连接页面。'
+}
 
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
@@ -226,13 +283,11 @@ if st.sidebar.button("💾 保存配置"):
     st.session_state.hotel_nickname = hotel_nickname.strip() or "助手"
     st.sidebar.success("✅ 配置已保存")
 
-# -----------------------------
-# 🚀 主页面逻辑
-# -----------------------------
+# ==================== 主页面逻辑 ====================
 
 # ============ 1. 携程评分计算器 ============
 if page == "📊 携程评分计算器":
-    st.title("携程酒店评分提升计算器 ")
+    st.title("携程酒店评分提升计算器")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -273,7 +328,7 @@ if page == "📊 携程评分计算器":
 
 # ============ 2. 美团评分计算器 ============
 elif page == "📊 美团评分计算器":
-    st.title("美团酒店评分提升计算器 ")
+    st.title("美团酒店评分提升计算器")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -312,158 +367,99 @@ elif page == "📊 美团评分计算器":
     except Exception as e:
         st.error(f"❌ 计算错误：{str(e)}")
 
-# ============ 3. 评论维度分析 ============
+# ============ 3. 评论维度分析（新） ============
 elif page == "📈 评论维度分析":
-    st.title("📈 评论维度分析（支持 Excel 上传）")
+    st.title("📈 评论维度分析（基于文本挖掘）")
 
-    st.markdown("""
-    上传包含以下列的 Excel 文件：
-    - 环境、设施、服务、卫生、性价比、位置
-    - 入住时间（格式：YYYY-MM-DD）
-    """)
+    st.markdown("上传包含 **评论内容** 列的 Excel 文件，系统将自动提取标签并分析情感。")
 
     with st.expander("📄 示例格式"):
         st.write(pd.DataFrame({
-            '环境': [4.8], '设施': [4.5], '服务': [4.2], '卫生': [4.6],
-            '性价比': [4.7], '位置': [4.9], '入住时间': ['2025-07-01']
+            '评论内容': ["位置很好，靠近地铁，但房间有点小。", "早餐丰富，服务热情，就是有点吵。"]
         }))
 
     uploaded_file = st.file_uploader("上传评论数据 (.xlsx)", type=["xlsx"])
 
-    # 改进建议库
-    IMPROVEMENT_SUGGESTIONS = {
-        '服务': """
-🔹 **服务优化建议**：
-- 加强员工服务意识培训，提升响应速度与礼貌用语；
-- 建立客户反馈快速响应机制，及时处理投诉；
-- 推出个性化服务（如生日祝福、欢迎茶饮）提升体验。
-        """,
-        '设施': """
-🔹 **设施优化建议**：
-- 定期检查设备老化情况（如空调、热水器、Wi-Fi）；
-- 升级客房智能设备（如智能门锁、语音控制）；
-- 增加公共区域设施（如充电站、自助洗衣、休闲区）。
-        """,
-        '卫生': """
-🔹 **卫生优化建议**：
-- 强化清洁流程标准，实施“三级检查”制度；
-- 使用可视化清洁记录（如拍照上传系统）；
-- 增加消毒频次，尤其高频接触区域（门把手、电梯按钮）。
-        """,
-        '环境': """
-🔹 **环境优化建议**：
-- 优化隔音设计，减少噪音干扰；
-- 增加绿植与景观布置，提升舒适度；
-- 控制公共区域灯光与音乐，营造温馨氛围。
-        """,
-        '位置': """
-🔹 **位置优化建议**：
-- 虽位置难以改变，但可优化交通接驳服务；
-- 提供详细出行指南（地铁、打车、步行路线）；
-- 与周边餐饮/景点合作推出优惠联动套餐。
-        """,
-        '性价比': """
-🔹 **性价比优化建议**：
-- 优化价格策略，推出淡季优惠、连住折扣；
-- 提升服务与设施感知价值（如免费早餐、欢迎水果）；
-- 明确宣传核心优势，增强"物有所值"感知。
-        """
-    }
-
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            dimensions = ['环境', '设施', '服务', '卫生', '性价比', '位置']
-            valid_dims = [d for d in dimensions if d in df.columns]
+            st.success(f"✅ 成功加载 {len(df)} 条评论数据")
 
-            if "入住时间" not in df.columns:
-                st.error("❌ 缺少 '入住时间' 列")
-            elif not valid_dims:
-                st.error("❌ 未找到有效维度列")
+            with st.expander("📄 数据预览"):
+                st.dataframe(df.head())
+
+            # 查找评论列
+            comment_col = None
+            if '评论内容' in df.columns:
+                comment_col = '评论内容'
             else:
-                avg_scores = {}
-                for dim in valid_dims:
-                    score = calculate_time_and_rank_weighted_score(df, dim, "入住时间")
-                    avg_scores[dim] = score
+                potential = [col for col in df.columns if '评论' in col or '评价' in col or 'content' in col]
+                if potential:
+                    comment_col = potential[0]
 
-                avg_scores = pd.Series(avg_scores)
-                overall_score = avg_scores.mean().round(2)
+            if not comment_col:
+                st.error("❌ 未找到评论列，请确保包含“评论”或“评价”关键词的列。")
+            else:
+                # 提取标签评分
+                new_scores = extract_tags_with_scores(df[comment_col])
 
-                fig, ax = plt.subplots(figsize=(8, 5))
-                colors = ['green' if v >= 4.78 else 'orange' for v in avg_scores]
-                avg_scores.plot(kind='bar', ax=ax, color=colors, alpha=0.8)
-                for i, v in enumerate(avg_scores):
-                    color = 'green' if v >= 4.78 else 'orange'
-                    ax.text(i, v + 0.05, f"{v:.2f}", ha='center', fontsize=9, color=color, fontweight='bold')
-                plt.xticks(rotation=45)
-                plt.ylim(0, 5)
-                plt.ylabel("最终评分")
-                plt.title("各维度评分对比")
-                plt.tight_layout()
-                st.pyplot(fig)
+                if len(new_scores) == 0:
+                    st.warning("⚠️ 未提取到任何有效标签评分")
+                else:
+                    all_scores = pd.Series(new_scores).sort_values(ascending=False)
 
-                st.metric("🏆 综合评分", f"{overall_score:.2f} ⭐")
+                    # 可视化
+                    col1, col2 = st.columns(2)
 
-                excellent = avg_scores[avg_scores >= 4.78]
-                needs_improvement = avg_scores[avg_scores < 4.78]
+                    with col1:
+                        st.subheader("📊 柱状图：各维度评分")
+                        filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
+                        fig1, ax1 = plt.subplots(figsize=(10, 6))
+                        colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
+                        pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
+                        ax1.set_ylabel("评分（满分5.0）")
+                        ax1.set_ylim(4.5, 5.0)
+                        ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
+                        ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
+                        plt.xticks(rotation=45, ha='right')
+                        plt.tight_layout()
+                        st.pyplot(fig1)
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("### ✅ 优秀项")
-                    if len(excellent) == 0:
-                        st.markdown("暂无优秀项")
-                    else:
-                        for dim, score in excellent.items():
-                            st.markdown(f"🟢 **{dim}**: {score:.2f}")
+                    with col2:
+                        st.subheader("📈 树状图（Treemap）")
+                        fig2, ax2 = plt.subplots(figsize=(10, 6))
+                        sizes = all_scores.values
+                        colors = ['lightgreen' if v >= 4.78 else 'salmon' for v in all_scores]
+                        labels = [f'{k}\n{v:.2f}' for k, v in all_scores.items()]
+                        squarify.plot(sizes=sizes, label=labels, color=colors, alpha=0.8, ax=ax2, text_kwargs={'fontsize': 8})
+                        ax2.set_title("评分分布")
+                        ax2.axis("off")
+                        st.pyplot(fig2)
 
-                with col2:
-                    st.markdown("### ⚠️ 待改进项")
+                    # 优化建议
+                    st.subheader("💡 优化建议（可修改）")
+                    needs_improvement = all_scores[all_scores < 4.78]
                     if len(needs_improvement) == 0:
-                        st.markdown("所有维度均表现优秀！")
+                        st.success("🎉 所有维度均 ≥ 4.78，表现优秀！")
                     else:
                         for dim, score in needs_improvement.items():
-                            st.markdown(f"🟠 **{dim}**: {score:.2f}")
+                            default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
+                            st.markdown(f"### 📌 {dim} ({score:.2f})")
+                            st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
-                st.markdown("---")
-                st.subheader("📝 自动分析结论与优化建议")
-
-                conclusion_parts = []
-                if overall_score >= 4.5:
-                    conclusion_parts.append(f"整体表现优秀，综合评分为 **{overall_score:.2f}**，客户满意度较高。")
-                elif overall_score >= 4.0:
-                    conclusion_parts.append(f"整体表现良好，综合评分为 **{overall_score:.2f}**，存在提升空间。")
-                else:
-                    conclusion_parts.append(f"整体表现有待提升，综合评分为 **{overall_score:.2f}**，需重点关注。")
-
-                if len(excellent) > 0:
-                    good_dims = "、".join(excellent.index.tolist())
-                    conclusion_parts.append(f"优势维度为：**{good_dims}**，继续保持。")
-
-                if len(needs_improvement) > 0:
-                    st.markdown("### 🔧 重点改进建议")
-                    for dim in needs_improvement.index:
-                        suggestion = IMPROVEMENT_SUGGESTIONS.get(dim, f"🔹 **{dim}**: 建议加强相关方面管理与投入。")
-                        st.markdown(suggestion)
-                    weak_dims = "、".join(needs_improvement.index.tolist())
-                    conclusion_parts.append(f"需重点改进：**{weak_dims}**。")
-                else:
-                    conclusion_parts.append("所有维度均达到优秀水平，继续保持服务品质。")
-
-                final_conclusion = "。".join(conclusion_parts) + "。"
-                st.markdown(f"> {final_conclusion}")
-
-                excel_data = to_excel(df)
-                b64 = base64.b64encode(excel_data).decode()
-                href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="评论分析数据.xlsx">📥 下载原始数据</a>'
-                st.markdown(href, unsafe_allow_html=True)
+                    # 导出原始数据
+                    excel_data = to_excel(df)
+                    b64 = base64.b64encode(excel_data).decode()
+                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
+                    st.markdown(href, unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"❌ 数据处理出错：{str(e)}")
-            st.info("请检查 Excel 文件格式是否正确，评分列是否为数值类型。")
+            st.error(f"❌ 数据处理失败：{str(e)}")
+            st.exception(e)
 
 # ============ 4. 智能评论回复 ============
 elif page == "💬 智能评论回复":
-    st.title("智能评论回复生成器")
+    st.title("💬 智能评论回复生成器")
 
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -537,10 +533,5 @@ elif page == "💬 智能评论回复":
                     st.experimental_rerun()
 
 # ============ API Key 提醒 ============
-if page == "💬 智能评论回复" and not QWEN_API_KEY:
-
-    st.warning("⚠️ 请设置环境变量 `QWEN_API_KEY`。详情见 README.md")
-
-
-
-
+if page == "💬 智能评论回复" and not os.getenv("QWEN_API_KEY"):
+    st.warning("⚠️ 请在 Streamlit Cloud 的 Secrets 中设置 `QWEN_API_KEY`")
