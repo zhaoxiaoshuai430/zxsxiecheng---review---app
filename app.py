@@ -16,6 +16,8 @@ import base64
 import jieba
 import time
 import datetime
+import os  # 新增：用于读取环境变量
+import requests  # 新增：用于调用 Qwen API
 
 # ==================== 页面配置 ====================
 st.set_page_config(page_title="Hotel OTA", layout="wide")
@@ -104,6 +106,73 @@ SUGGESTIONS = {
     '前台': '缩短入住/退房等待时间，推行自助机或移动端办理。',
     '网络': '升级Wi-Fi带宽，确保全区域稳定覆盖，设置一键连接页面。'
 }
+
+# ==================== 智能评论回复相关函数 ====================
+def generate_prompt(review, guest_name, hotel_name, hotel_nickname, source):
+    """生成发送给大模型的提示词"""
+    return f"""
+    你是一位专业、温暖、有同理心的酒店客服经理。请根据以下信息，为客人撰写一条真诚、得体、有温度的回复。
+    要求：
+    1. 使用中文，语气谦逊、礼貌、真诚，体现对客人的尊重和关怀。
+    2. 必须以“{guest_name}，您好！”开头。
+    3. 结尾落款为“{hotel_nickname}”。
+    4. 字数控制在100-200字之间。
+    5. 回复内容需针对客人评论的具体内容进行回应，表达感谢、致歉或说明改进措施。
+    6. 避免使用“非常”、“极其”等过度夸张的词汇，保持真诚自然。
+    7. 如果是好评，表达感谢并欢迎再次光临；如果是差评，先诚恳道歉，再说明改进方向。
+    8. 请勿提及API、模型或任何技术细节。
+
+    客人评论：{review}
+    客人姓名：{guest_name}
+    酒店名称：{hotel_name}
+    助手昵称：{hotel_nickname}
+    评论来源平台：{source}
+
+    请直接输出回复内容，不要包含其他任何说明。
+    """
+
+def call_qwen_api(prompt, api_key, model="qwen-plus", max_tokens=512):
+    """调用通义千问 API"""
+    url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "input": {
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        },
+        "parameters": {
+            "result_format": "message",
+            "max_tokens": max_tokens,
+            "temperature": 0.7
+        }
+    }
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        if 'output' in result and 'choices' in result['output'] and len(result['output']['choices']) > 0:
+            return result['output']['choices'][0]['message']['content'].strip()
+        else:
+            return f"❌ 未获取到有效回复：{result}"
+    except Exception as e:
+        return f"❌ API调用失败：{str(e)}"
+
+def truncate_to_word_count(text, max_count=200):
+    """按中文字数（含标点）截断文本"""
+    count = 0
+    truncated = ""
+    for char in text:
+        if char.isalnum() or char in '，。！？；：""''（）【】《》、':
+            count += 1
+        if count > max_count:
+            break
+        truncated += char
+    return truncated
 
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
@@ -294,6 +363,7 @@ elif page == "📈 评论维度分析":
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
             st.exception(e)
+
 # ============ 4. 智能评论回复 ============
 elif page == "💬 智能评论回复":
     st.title("智能评论回复生成器")
@@ -330,10 +400,10 @@ elif page == "💬 智能评论回复":
                 prompt = generate_prompt(
                     review_input, guest_name,
                     st.session_state.hotel_name,
-                    st.session_state.hotel_nickname,
+                    st.session_nickname,
                     review_source
                 )
-                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)  # 建议把 api_key 作为参数传入
+                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
                 reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
                 word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
@@ -385,15 +455,7 @@ elif page == "💬 智能评论回复":
                 if st.button(f"🗑️ 删除记录 {idx}", key=f"del_{idx}"):
                     st.session_state.history.pop(-idx-1)
                     st.rerun()  # 替代已弃用的 st.experimental_rerun()
+
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
-
-
-
-
-
-
-
-
-
