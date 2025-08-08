@@ -108,71 +108,129 @@ SUGGESTIONS = {
 }
 
 # ==================== 智能评论回复相关函数 ====================
-def generate_prompt(review, guest_name, hotel_name, hotel_nickname, source):
-    """生成发送给大模型的提示词"""
-    return f"""
-    你是一位专业、温暖、有同理心的酒店客服经理。请根据以下信息，为客人撰写一条真诚、得体、有温度的回复。
-    要求：
-    1. 使用中文，语气谦逊、礼貌、真诚，体现对客人的尊重和关怀。
-    2. 必须以“{guest_name}，您好！”开头。
-    3. 结尾落款为“{hotel_nickname}”。
-    4. 字数控制在100-200字之间。
-    5. 回复内容需针对客人评论的具体内容进行回应，表达感谢、致歉或说明改进措施。
-    6. 避免使用“非常”、“极其”等过度夸张的词汇，保持真诚自然。
-    7. 如果是好评，表达感谢并欢迎再次光临；如果是差评，先诚恳道歉，再说明改进方向。
-    8. 请勿提及API、模型或任何技术细节。
+def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nickname: str, review_source: str):
+    """生成给大模型的提示词（优化版）"""
+    info = extract_aspects_and_sentiment(review)
 
-    客人评论：{review}
-    客人姓名：{guest_name}
-    酒店名称：{hotel_name}
-    助手昵称：{hotel_nickname}
-    评论来源平台：{source}
-
-    请直接输出回复内容，不要包含其他任何说明。
-    """
-
-def call_qwen_api(prompt, api_key, model="qwen-plus", max_tokens=512):
-    """调用通义千问 API"""
-    url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+    tag_map = {
+        '交通': '【❤️交通便利❤️】',
+        '服务': '【❤️服务周到❤️】',
+        '卫生': '【✅干净整洁✅】',
+        '早餐': '【🍳早餐可口🍳】',
+        '性价比': '【💰性价比高💰】',
+        '环境': '【🌿安静舒适🌿】',
+        '设施': '【🔧设施完善🔧】'
     }
-    data = {
-        "model": model,
+    # 只在正面或中性评价中展示标签
+    tags = "".join(tag_map[aspect] for aspect in info['aspects'] if aspect in tag_map)
+    if not tags or info['sentiment'] == "负面":
+        tags = "【🏨舒适入住🏨】"
+
+    # 构建更精确的情感导向说明
+    sentiment_guidance = ""
+    if info['sentiment'] == "正面":
+        sentiment_guidance = "客人对本次入住体验表示满意，重点表扬了某些方面。请表达感谢，并强调我们始终致力于提供高品质服务。"
+    elif info['sentiment'] == "负面":
+        sentiment_guidance = "客人对本次入住存在不满，可能涉及服务、设施或环境问题。请首先诚恳道歉，说明已记录反馈并正在改进，展现酒店的责任感与改进决心。"
+    else:  # 中性
+        sentiment_guidance = "客人评论较为中立，未明确表达强烈情感。请表达欢迎与感谢，传递酒店的温暖与专业形象。"
+
+    # 细节补充（用于增强回复针对性）
+    additional_notes = []
+    if info['has_complaint']:
+        additional_notes.append("注意：评论中包含负面反馈，请避免过度赞美，优先体现关怀与改进态度。")
+    if info['has_praise']:
+        additional_notes.append("注意：评论中包含明确表扬，请具体回应并表达感谢。")
+    if info['has_facility_issue']:
+        additional_notes.append("提及设施陈旧或损坏，请回应‘已反馈工程部评估升级’或类似表述。")
+    if info['has_noise']:
+        additional_notes.append("提及噪音问题，请承诺‘加强隔音管理’或‘优化客房分配策略’。")
+
+    prompt = f"""
+    【角色设定】
+    你是 {hotel_name} 的官方客服代表，昵称为“{hotel_nickname}”。你正在回复一位客人在 {review_source} 平台发布的评论。
+
+    【任务要求】
+    请撰写一条正式、得体、有温度的中文回复，用于公开发布。必须满足以下所有规则：
+
+    1. 开头必须包含以下标签：
+       {tags}
+
+    2. 称呼方式（二选一）：
+       - 若评论含表扬：使用“亲爱的{guest_name}”；
+       - 否则：使用“尊敬的宾客”。
+
+    3. 回复语气必须符合以下情感导向：
+       {sentiment_guidance}
+
+    4. 内容结构建议：
+       - 正面评论：感谢 → 具体回应表扬点 → 表达持续努力的决心 → 邀请再次光临
+       - 负面评论：致歉 → 承认问题 → 说明改进措施 → 邀请再次体验
+       - 中性评论：感谢 → 简要回应内容 → 表达欢迎之意
+
+    5. 字数严格控制在 100–200 个汉字之间（不含标签）。
+    6. 禁止使用诗句、网络用语、过度夸张词汇（如“极其”“完美”）。
+    7. 结尾必须包含类似“期待您再次光临，祝您生活愉快！”的表达。
+    8. 不提及 API、模型、技术细节或内部流程。
+
+    【附加提示】
+    {' '.join(additional_notes) if additional_notes else '无特殊注意事项。'}
+
+    【客人原始评论】
+    {review}
+
+    请直接输出最终回复内容，不要包含“回复：”等前缀。
+    """
+    return prompt
+
+def call_qwen_api(prompt: str) -> str:
+    """调用通义千问API"""
+    headers = {
+        'Authorization': f'Bearer {QWEN_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        "model": "qwen-max",
         "input": {
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": [{"role": "user", "content": prompt}]
         },
         "parameters": {
-            "result_format": "message",
-            "max_tokens": max_tokens,
-            "temperature": 0.7
+            "result_format": "text",
+            "max_tokens": 200,
+            "temperature": 0.6,
+            "top_p": 0.85
         }
     }
     try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        result = response.json()
-        if 'output' in result and 'choices' in result['output'] and len(result['output']['choices']) > 0:
-            return result['output']['choices'][0]['message']['content'].strip()
+        response = requests.post(QWEN_API_URL, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            return result['output']['text'].strip()
         else:
-            return f"❌ 未获取到有效回复：{result}"
+            return f"❌ API 错误 [{response.status_code}]：{response.text}"
     except Exception as e:
-        return f"❌ API调用失败：{str(e)}"
+        return f"🚨 请求失败：{str(e)}"
 
-def truncate_to_word_count(text, max_count=200):
-    """按中文字数（含标点）截断文本"""
-    count = 0
-    truncated = ""
-    for char in text:
-        if char.isalnum() or char in '，。！？；：""''（）【】《》、':
-            count += 1
-        if count > max_count:
-            break
-        truncated += char
-    return truncated
+def truncate_to_word_count(text: str, min_words=100, max_words=200) -> str:
+    """按汉字字符数截断文本"""
+    words = [c for c in text if c.isalnum() or c in '，。！？；：""''（）【】《》、']
+    content = ''.join(words)
+    if len(content) <= max_words:
+        return content
+    else:
+        truncated = content[:max_words]
+        for punct in ['。', '！', '？']:
+            if punct in truncated:
+                truncated = truncated[:truncated.rfind(punct) + 1]
+                break
+        if len(truncated) < min_words:
+            truncated = content[:max_words]
+        return truncated[:max_words]
+
+# ==================== API 配置 ====================
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "sk-7bc542dd1d4d48378883befa47d91d43")  # ← 替换为你的 Key
+QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+
 
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
@@ -459,3 +517,4 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption("© 2025 酒店运营工具")
+
