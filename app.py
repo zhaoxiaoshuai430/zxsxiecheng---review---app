@@ -412,24 +412,29 @@ elif page == "📈 评论维度分析":
 
                     # 调整列的比例，使柱状图占据更多空间
                     col1, _ = st.columns([3, 1])
-                    with col1:
-                        st.subheader("📊 柱状图：各维度评分")
-                        filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
-                        fig1, ax1 = plt.subplots(figsize=(10, 6))
-                        colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
-                        pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
-                        ax1.set_ylabel("评分（满分5.0）")
-                        ax1.set_ylim(4.5, 5.0)
-                        ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
-                        ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
-                        plt.xticks(rotation=45, ha='right')
-                        plt.tight_layout()
-                        st.pyplot(fig1)
-
-                        # 将具体文字导入到柱状图下面
-                        for dimension, score in all_scores.items():
-                            color = "🟢" if score >= 4.78 else "🔴"
-                            st.markdown(f"{color} **{dimension}**: {score:.2f}")
+                with col1:
+                    st.subheader("📊 柱状图：各维度评分")
+                    filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
+                    fig1, ax1 = plt.subplots(figsize=(10, 6))
+                    colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
+                    pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
+                    ax1.set_ylabel("评分（满分5.0）")
+                    ax1.set_ylim(4.5, 5.0)
+                    ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
+                    ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                    st.pyplot(fig1)
+                
+                    # ✅ 替换为横向排列的评分标签
+                    st.markdown("### 🔽 各维度评分")
+                    if len(all_scores) > 0:
+                        cols = st.columns(len(all_scores))  # 每个维度一个列
+                        for idx, (dimension, score) in enumerate(all_scores.items()):
+                            emoji = "🟢" if score >= 4.78 else "🔴"
+                            cols[idx].markdown(f"{emoji} **{dimension}**<br>{score:.2f}", unsafe_allow_html=True)
+                    else:
+                        st.caption("暂无评分数据")
 
                     st.subheader("💡 优化建议（可修改）")
                     needs_improvement = all_scores[all_scores < 4.78]
@@ -542,6 +547,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
