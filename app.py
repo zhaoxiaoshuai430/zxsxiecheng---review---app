@@ -317,7 +317,7 @@ if page == "📊 携程评分提升计算器":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        current_score = st.number_input("当前平均评分", 0.0, 5.0, 4.52, 0.01)
+        current_score = st.number_input("当前评分", 0.0, 5.0, 4.52, 0.01)
     with col2:
         total_reviews = st.number_input("当前总评价数", 0, 10000, 500, 1)
     with col3:
@@ -348,7 +348,7 @@ elif page == "📊 美团评分提升计算器":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        current_score = st.number_input("当前平均评分", 0.0, 5.0, 4.52, 0.01)
+        current_score = st.number_input("当前评分", 0.0, 5.0, 4.52, 0.01)
     with col2:
         total_reviews = st.number_input("当前总评价数", 0, 10000, 800, 1)
     with col3:
@@ -558,6 +558,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
