@@ -412,7 +412,7 @@ elif page == "📈 评论维度分析":
 
                     # 调整列的比例，使柱状图占据更多空间
                     col1, _ = st.columns([3, 1])
-               with col1:
+                with col1:
                     st.subheader("📊 柱状图：各维度评分")
                     filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
                     fig1, ax1 = plt.subplots(figsize=(10, 6))
@@ -437,7 +437,6 @@ elif page == "📈 评论维度分析":
                         st.table(df_table)
                     else:
                         st.caption("暂无评分数据")
-
                     st.subheader("💡 优化建议（可修改）")
                     needs_improvement = all_scores[all_scores < 4.78]
                     if len(needs_improvement) == 0:
@@ -549,6 +548,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
