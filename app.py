@@ -410,7 +410,8 @@ elif page == "📈 评论维度分析":
                 else:
                     all_scores = pd.Series(new_scores).sort_values(ascending=False)
 
-                    col1, col2 = st.columns(2)
+                    # 调整列的比例，使柱状图占据更多空间
+                    col1, _ = st.columns([3, 1])
                     with col1:
                         st.subheader("📊 柱状图：各维度评分")
                         filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
@@ -425,9 +426,7 @@ elif page == "📈 评论维度分析":
                         plt.tight_layout()
                         st.pyplot(fig1)
 
-                    with col2:
-                        st.subheader("📋 评分详情（文本列表）")
-                        st.markdown("#### 所有维度评分：")
+                        # 将具体文字导入到柱状图下面
                         for dimension, score in all_scores.items():
                             color = "🟢" if score >= 4.78 else "🔴"
                             st.markdown(f"{color} **{dimension}**: {score:.2f}")
@@ -544,3 +543,4 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
