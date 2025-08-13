@@ -28,9 +28,12 @@ if 'history' not in st.session_state:
 
 if 'hotel_name' not in st.session_state:
     st.session_state.hotel_name = "中油花园酒店"
-# 设置默认昵称，不再由用户配置
+
 if 'hotel_nickname' not in st.session_state:
     st.session_state.hotel_nickname = "小油"  # 默认昵称
+
+if 'hotel_location' not in st.session_state:
+    st.session_state.hotel_location = "该城市某处"
 
 # ==================== 工具函数：Excel 导出 ====================
 def to_excel(df):
@@ -107,12 +110,10 @@ def extract_aspects_and_sentiment(text):
     has_facility_issue = False
     has_noise = False
 
-    # 提取维度
     for aspect, keywords in TAG_KEYWORDS.items():
         if any(kw in text_lower for kw in keywords):
             aspects.append(aspect)
 
-    # 判断情感
     pos_count = sum(1 for word in POSITIVE_WORDS if word in text_lower)
     neg_count = sum(1 for word in NEGATIVE_WORDS if word in text_lower)
 
@@ -125,7 +126,6 @@ def extract_aspects_and_sentiment(text):
     else:
         sentiment = "中性"
 
-    # 检查具体问题
     if any(kw in text_lower for kw in ['旧', '坏', '损坏', '故障', '设施陈旧', '设备老化']):
         has_facility_issue = True
     if any(kw in text_lower for kw in ['吵', '噪音', '隔音', '安静']):
@@ -155,8 +155,8 @@ SUGGESTIONS = {
 }
 
 # ==================== 智能评论回复相关函数 ====================
-def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nickname: str, review_source: str):
-    """生成给大模型的提示词（优化版）"""
+def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nickname: str, review_source: str, hotel_location: str):
+    """生成给大模型的提示词（增强版，支持地理位置）"""
     info = extract_aspects_and_sentiment(review)
 
     tag_map = {
@@ -168,21 +168,18 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
         '环境': '【🌿安静舒适🌿】',
         '设施': '【🔧设施完善🔧】'
     }
-    # 只在正面或中性评价中展示标签
     tags = "".join(tag_map.get(aspect, "") for aspect in info['aspects'])
     if not tags or info['sentiment'] == "负面":
         tags = "【🏨舒适入住🏨】"
 
-    # 构建更精确的情感导向说明
     sentiment_guidance = ""
     if info['sentiment'] == "正面":
         sentiment_guidance = "客人对本次入住体验表示满意，重点表扬了某些方面。请表达感谢，并强调我们始终致力于提供高品质服务。"
     elif info['sentiment'] == "负面":
         sentiment_guidance = "客人对本次入住存在不满，可能涉及服务、设施或环境问题。请首先诚恳道歉，说明已记录反馈并正在改进，展现酒店的责任感与改进决心。"
-    else:  # 中性
+    else:
         sentiment_guidance = "客人评论较为中立，未明确表达强烈情感。请表达欢迎与感谢，传递酒店的温暖与专业形象。"
 
-    # 细节补充（用于增强回复针对性）
     additional_notes = []
     if info['has_complaint']:
         additional_notes.append("注意：评论中包含负面反馈，请避免过度赞美，优先体现关怀与改进态度。")
@@ -196,6 +193,12 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
     prompt = f"""
     【角色设定】
     你是 {hotel_name} 的官方客服代表，昵称为“{hotel_nickname}”。你正在回复一位客人在 {review_source} 平台发布的评论。
+
+    【酒店地理位置】
+    {hotel_location}。请根据此信息灵活回应，如：
+    - 若位置优越：可表达“感谢您认可我们优越的地理位置”
+    - 若位置偏僻：可说明“虽地处安静区域，我们将持续优化交通指引”
+    - 若近地铁/景区：可强调“便捷的交通/步行即可抵达景点”
 
     【任务要求】
     请撰写一条正式、得体、有温度的中文回复，用于公开发布。必须满足以下所有规则：
@@ -211,11 +214,11 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
        {sentiment_guidance}
 
     4. 内容结构建议：
-       - 正面评论：感谢 → 具体回应表扬点 → 表达持续努力的决心 → 邀请再次光临
-       - 负面评论：致歉 → 承认问题 → 说明改进措施 → 邀请再次体验
-       - 中性评论：感谢 → 简要回应内容 → 表达欢迎之意
+       - 正面评论：感谢 → 具体回应表扬点 → 结合地理位置说明优势 → 表达持续努力的决心 → 邀请再次光临
+       - 负面评论：致歉 → 承认问题 → 说明改进措施 → 可提及位置优势弥补短板 → 邀请再次体验
+       - 中性评论：感谢 → 简要回应内容 → 提及位置便利性 → 表达欢迎之意
 
-    5. 字数严格控制在 100–200 个汉字之间（不含标签）。
+    5. 字数严格控制在 150–250 个汉字之间（不含标签）。
     6. 禁止使用诗句、网络用语、过度夸张词汇（如“极其”“完美”）。
     7. 结尾必须包含类似“期待您再次光临，祝您生活愉快！”的表达。
     8. 不提及 API、模型、技术细节或内部流程。
@@ -243,7 +246,7 @@ def call_qwen_api(prompt: str, api_key: str) -> str:
         },
         "parameters": {
             "result_format": "text",
-            "max_tokens": 200,
+            "max_tokens": 300,  # 支持更长输出
             "temperature": 0.6,
             "top_p": 0.85
         }
@@ -259,8 +262,8 @@ def call_qwen_api(prompt: str, api_key: str) -> str:
     except Exception as e:
         return f"🚨 请求失败：{str(e)}"
 
-def truncate_to_word_count(text: str, min_words=100, max_words=200) -> str:
-    """按汉字字符数截断文本"""
+def truncate_to_word_count(text: str, min_words=150, max_words=250) -> str:
+    """按汉字字符数截断文本（改为150–250）"""
     words = [c for c in text if c.isalnum() or c in '，。！？；：""''（）【】《》、']
     content = ''.join(words)
     if len(content) <= max_words:
@@ -288,20 +291,28 @@ page = st.sidebar.radio("选择功能", [
 st.sidebar.divider()
 st.sidebar.subheader("⚙️ 酒店配置")
 hotel_name = st.sidebar.text_input("酒店名称", st.session_state.hotel_name)
-# ✅ 已删除：不再显示“助手昵称”输入框
+
+# ✅ 新增：地理位置输入
+hotel_location = st.sidebar.text_input(
+    "酒店地理位置描述",
+    st.session_state.get('hotel_location', ''),
+    help="例如：市中心繁华地段、近地铁2号线湖滨站、西湖景区旁安静区域等"
+)
 
 if st.sidebar.button("💾 保存配置"):
     st.session_state.hotel_name = hotel_name.strip() or "未命名酒店"
-    # ✅ 保留默认昵称，但不再由用户更改
+    if hotel_location.strip():
+        st.session_state.hotel_location = hotel_location.strip()
+    else:
+        st.session_state.hotel_location = "该城市某处"
     st.sidebar.success("✅ 配置已保存")
 
 # ==================== 主页面逻辑 ====================
 
-# ============ 1. 携程评分计算器（完全保留您提供的逻辑） ============
+# ============ 1. 携程评分计算器 ============
 if page == "📊 携程评分提升计算器":
     st.title("📊 携程评分提升计算器")
 
-    # 用户只需输入两项
     col1, col2, col3 = st.columns(3)
     with col1:
         current_score = st.number_input("当前平均评分", 0.0, 5.0, 4.52, 0.01)
@@ -312,17 +323,11 @@ if page == "📊 携程评分提升计算器":
 
     def calculate_simple():
         if current_score >= target_score:
-            return 0  # 已达标
-
-        # 设需要 x 条 5.0 分的好评
-        # (current_score * n + 5 * x) / (n + x) >= target
-        # 解不等式：x >= (target * n - current * n) / (5 - target)
+            return 0
         numerator = (target_score - current_score) * total_reviews
         denominator = 5.0 - target_score
-
         if denominator <= 0:
             raise ValueError("目标评分必须小于5.0")
-
         required = math.ceil(numerator / denominator)
         return max(0, required)
 
@@ -335,7 +340,7 @@ if page == "📊 携程评分提升计算器":
     except Exception as e:
         st.error(f"❌ 计算错误：{str(e)}")
 
-# ============ 2. 美团评分计算器（完全保留您提供的逻辑） ============
+# ============ 2. 美团评分计算器 ============
 elif page == "📊 美团评分提升计算器":
     st.title("美团酒店评分提升计算器（简化版）")
 
@@ -343,23 +348,17 @@ elif page == "📊 美团评分提升计算器":
     with col1:
         current_score = st.number_input("当前平均评分", 0.0, 5.0, 4.52, 0.01)
     with col2:
-        total_reviews = st.number_input("当前总评价数", 0, 10000, 800, 1)  # 示例：近一年+更早合并为总数
+        total_reviews = st.number_input("当前总评价数", 0, 10000, 800, 1)
     with col3:
         target_score = st.number_input("目标评分", 0.0, 5.0, 4.80, 0.01)
 
     def calculate_simple():
         if current_score >= target_score:
-            return 0  # 已达标
-
-        # 计算需要多少条 5.0 分好评
-        # (current * n + 5 * x) / (n + x) >= target
-        # 解得：x >= (target - current) * n / (5 - target)
+            return 0
         numerator = (target_score - current_score) * total_reviews
         denominator = 5.0 - target_score
-
         if denominator <= 0:
             raise ValueError("目标评分必须小于 5.0")
-
         required = math.ceil(numerator / denominator)
         return max(0, required)
 
@@ -372,7 +371,7 @@ elif page == "📊 美团评分提升计算器":
     except Exception as e:
         st.error(f"❌ 计算错误：{str(e)}")
 
-# ============ 3. 评论维度分析（自动生成分析文本） ============
+# ============ 3. 评论维度分析 ============
 elif page == "📈 评论维度分析":
     st.title("📈 评论维度分析（基于文本挖掘）")
 
@@ -393,7 +392,6 @@ elif page == "📈 评论维度分析":
             with st.expander("📄 数据预览"):
                 st.dataframe(df.head())
 
-            # 查找评论列
             comment_col = None
             if '评论内容' in df.columns:
                 comment_col = '评论内容'
@@ -405,7 +403,6 @@ elif page == "📈 评论维度分析":
             if not comment_col:
                 st.error("❌ 未找到评论列，请确保包含“评论”或“评价”关键词的列。")
             else:
-                # 提取标签评分
                 new_scores = extract_tags_with_scores(df[comment_col])
 
                 if len(new_scores) == 0:
@@ -413,9 +410,7 @@ elif page == "📈 评论维度分析":
                 else:
                     all_scores = pd.Series(new_scores).sort_values(ascending=False)
 
-                    # 可视化
                     col1, col2 = st.columns(2)
-
                     with col1:
                         st.subheader("📊 柱状图：各维度评分")
                         filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
@@ -437,7 +432,6 @@ elif page == "📈 评论维度分析":
                             color = "🟢" if score >= 4.78 else "🔴"
                             st.markdown(f"{color} **{dimension}**: {score:.2f}")
 
-                    # 优化建议
                     st.subheader("💡 优化建议（可修改）")
                     needs_improvement = all_scores[all_scores < 4.78]
                     if len(needs_improvement) == 0:
@@ -448,7 +442,6 @@ elif page == "📈 评论维度分析":
                             st.markdown(f"### 📌 {dim} ({score:.2f})")
                             st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
-                    # 导出原始数据
                     excel_data = to_excel(df)
                     b64 = base64.b64encode(excel_data).decode()
                     href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
@@ -456,17 +449,15 @@ elif page == "📈 评论维度分析":
 
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
-            st.exception(e)
 
-# ============ 4. 智能评论回复 ============
+# ============ 4. 智能评论回复（增强版） ============
 elif page == "💬 智能评论回复":
     st.title("智能评论回复生成器")
 
-    # ====== 🔐 安全读取 API Key（推荐方式）======
     try:
         QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
     except KeyError:
-        QWEN_API_KEY = os.getenv("QWEN_API_KEY")  # 本地开发时可用环境变量回退
+        QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 
     if not QWEN_API_KEY or not QWEN_API_KEY.startswith("sk-"):
         st.warning("⚠️ 请设置有效的 Qwen API Key")
@@ -476,7 +467,7 @@ elif page == "💬 智能评论回复":
         2. 添加：`QWEN_API_KEY = "sk-你的密钥"`；
         3. 重新部署。
         """)
-        st.stop()  # 阻止后续执行
+        st.stop()
 
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -493,8 +484,9 @@ elif page == "💬 智能评论回复":
                 prompt = generate_prompt(
                     review_input, guest_name,
                     st.session_state.hotel_name,
-                    st.session_state.hotel_nickname,  # ✅ 仍然使用默认昵称
-                    review_source
+                    st.session_state.hotel_nickname,
+                    review_source,
+                    st.session_state.get('hotel_location', '该城市某处')
                 )
                 raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
                 reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
@@ -505,7 +497,7 @@ elif page == "💬 智能评论回复":
             {reply}
             </div>
             <p style="color: #888; font-size: 14px; margin-top: 4px;">
-            🔤 字数：{word_count} / 200（目标区间：100–200）
+            🔤 字数：{word_count} / 250（目标区间：150–250）
             </p>
             """, unsafe_allow_html=True)
 
@@ -552,5 +544,3 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
-
-
