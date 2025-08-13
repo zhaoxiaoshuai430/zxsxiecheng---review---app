@@ -372,7 +372,7 @@ elif page == "📊 美团评分提升计算器":
         st.error(f"❌ 计算错误：{str(e)}")
 
 # ============ 3. 评论维度分析 ============
-elif page == "📈 评论维度分析":
+if page == "📈 评论维度分析":
     st.title("📈 评论维度分析（基于文本挖掘）")
 
     st.markdown("上传包含 **评论内容** 列的 Excel 文件，系统将自动提取标签并分析情感。")
@@ -403,54 +403,62 @@ elif page == "📈 评论维度分析":
             if not comment_col:
                 st.error("❌ 未找到评论列，请确保包含“评论”或“评价”关键词的列。")
             else:
+                # 提取评论内容中的标签评分
                 new_scores = extract_tags_with_scores(df[comment_col])
 
-                if len(new_scores) == 0:
+                # 读取Excel中已有的维度评分
+                dimension_cols = ['设施', '卫生', '环境', '服务']  # 根据实际情况调整维度列名
+                existing_scores = df[dimension_cols].mean().to_dict()
+
+                # 合并新旧评分
+                all_scores = {**new_scores, **existing_scores}
+
+                if len(all_scores) == 0:
                     st.warning("⚠️ 未提取到任何有效标签评分")
                 else:
-                    all_scores = pd.Series(new_scores).sort_values(ascending=False)
+                    all_scores = pd.Series(all_scores).sort_values(ascending=False)
 
                     # 调整列的比例，使柱状图占据更多空间
                     col1, _ = st.columns([3, 1])
-                with col1:
-                    st.subheader("📊 柱状图：各维度评分")
-                    filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
-                    fig1, ax1 = plt.subplots(figsize=(10, 6))
-                    colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
-                    pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
-                    ax1.set_ylabel("评分（满分5.0）")
-                    ax1.set_ylim(4.5, 5.0)
-                    ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
-                    ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
-                    plt.xticks(rotation=45, ha='right')
-                    plt.tight_layout()
-                    st.pyplot(fig1)
-                
-                    # ✅ 替换为表格形式展示各维度评分
-                    st.markdown("### 🔽 各维度评分")
-                    if len(all_scores) > 0:
-                        table_data = []
-                        for dimension, score in all_scores.items():
-                            table_data.append([dimension, f"{score:.2f}"])
-                        
-                        df_table = pd.DataFrame(table_data, columns=["维度", "评分"])
-                        st.table(df_table)
-                    else:
-                        st.caption("暂无评分数据")
-                    st.subheader("💡 优化建议（可修改）")
-                    needs_improvement = all_scores[all_scores < 4.78]
-                    if len(needs_improvement) == 0:
-                        st.success("🎉 所有维度均 ≥ 4.78，表现优秀！")
-                    else:
-                        for dim, score in needs_improvement.items():
-                            default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
-                            st.markdown(f"### 📌 {dim} ({score:.2f})")
-                            st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
+                    with col1:
+                        st.subheader("📊 柱状图：各维度评分")
+                        filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
+                        fig1, ax1 = plt.subplots(figsize=(10, 6))
+                        colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
+                        pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
+                        ax1.set_ylabel("评分（满分5.0）")
+                        ax1.set_ylim(4.5, 5.0)
+                        ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
+                        ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
+                        plt.xticks(rotation=45, ha='right')
+                        plt.tight_layout()
+                        st.pyplot(fig1)
+                    
+                        # 替换为表格形式展示各维度评分
+                        st.markdown("### 🔽 各维度评分")
+                        if len(all_scores) > 0:
+                            table_data = []
+                            for dimension, score in all_scores.items():
+                                table_data.append([dimension, f"{score:.2f}"])
+                            
+                            df_table = pd.DataFrame(table_data, columns=["维度", "评分"])
+                            st.table(df_table)
+                        else:
+                            st.caption("暂无评分数据")
+                        st.subheader("💡 优化建议（可修改）")
+                        needs_improvement = all_scores[all_scores < 4.78]
+                        if len(needs_improvement) == 0:
+                            st.success("🎉 所有维度均 ≥ 4.78，表现优秀！")
+                        else:
+                            for dim, score in needs_improvement.items():
+                                default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
+                                st.markdown(f"### 📌 {dim} ({score:.2f})")
+                                st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
-                    excel_data = to_excel(df)
-                    b64 = base64.b64encode(excel_data).decode()
-                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
-                    st.markdown(href, unsafe_allow_html=True)
+                        excel_data = to_excel(df)
+                        b64 = base64.b64encode(excel_data).decode()
+                        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
+                        st.markdown(href, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
@@ -548,6 +556,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
