@@ -299,42 +299,39 @@ if st.sidebar.button("💾 保存配置"):
 
 # ============ 1. 携程评分计算器（完全保留您提供的逻辑） ============
 if page == "📊 携程评分提升计算器":
-    st.title("携程酒店评分提升计算器")
+    st.title("📊 携程评分提升计算器")
 
+    # 用户只需输入两项
     col1, col2, col3 = st.columns(3)
     with col1:
-        weighted_current_score = st.number_input("当前加权综合评分", 0.0, 5.0, 4.52, 0.01)
-        score_3_years_ago = st.number_input("三年前评分", 0.0, 5.0, 4.70, 0.01)
+        current_score = st.number_input("当前平均评分", 0.0, 5.0, 4.52, 0.01)
     with col2:
-        reviews_last_3_years = st.number_input("近三年评价数", 0, 10000, 500, 1)
-        reviews_before_3_years = st.number_input("三年前评价数", 0, 10000, 300, 1)
+        total_reviews = st.number_input("当前总评价数", 0, 10000, 500, 1)
     with col3:
         target_score = st.number_input("目标评分", 0.0, 5.0, 4.80, 0.01)
 
-    def calculate_xiecheng():
-        effective_old = reviews_before_3_years / 10.0
-        total_weight = reviews_last_3_years + effective_old
-        inferred_recent_score = (
-            (weighted_current_score * total_weight - score_3_years_ago * effective_old)
-            / reviews_last_3_years
-        )
-        if weighted_current_score >= target_score:
-            return 0, inferred_recent_score
+    def calculate_simple():
+        if current_score >= target_score:
+            return 0  # 已达标
 
-        numerator = (target_score * total_weight - score_3_years_ago * effective_old) - inferred_recent_score * reviews_last_3_years
+        # 设需要 x 条 5.0 分的好评
+        # (current_score * n + 5 * x) / (n + x) >= target
+        # 解不等式：x >= (target * n - current * n) / (5 - target)
+        numerator = (target_score - current_score) * total_reviews
         denominator = 5.0 - target_score
+
         if denominator <= 0:
-            raise ValueError("目标评分过高")
+            raise ValueError("目标评分必须小于5.0")
+
         required = math.ceil(numerator / denominator)
-        return max(0, required), inferred_recent_score
+        return max(0, required)
 
     try:
-        req, inferred = calculate_xiecheng()
-        st.success(f"✅ 反推出近三年真实评分为：**{inferred:.3f} 分**")
+        req = calculate_simple()
         if req == 0:
-            st.info(f"🎉 当前评分已达到目标 **{target_score:.2f}** 分")
+            st.info(f"🎉 当前评分 **{current_score:.2f}** 已达到或超过目标 **{target_score:.2f}**")
         else:
-            st.warning(f"📈 需要至少 **{req}** 条 5 星好评")
+            st.warning(f"📈 需要至少 **{req}** 条 5 星好评才能达到 **{target_score:.2f}** 分")
     except Exception as e:
         st.error(f"❌ 计算错误：{str(e)}")
 
@@ -559,3 +556,4 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
