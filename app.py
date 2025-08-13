@@ -421,7 +421,7 @@ elif page == "📈 评论维度分析":
                         bars = pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=['green' if v >= 4.78 else 'red' for v in filtered_scores.values()], alpha=0.8)
 
                         ax1.set_ylabel("评分（满分5.0）")
-                        ax1.set_ylim(4.5, 5.0)
+                        ax1.set_ylim(4.4, 5.0)  # 扩展 y 轴范围
                         ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
                         ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
 
@@ -433,7 +433,7 @@ elif page == "📈 评论维度分析":
                         for idx, (dimension, score) in enumerate(filtered_scores.items()):
                             color = "✅" if score >= 4.78 else "❌"
                             label = f"{color} {dimension}\n{score:.2f}"
-                            ax1.text(idx, 4.48, label, ha='center', va='top', fontsize=9, rotation=0, linespacing=1.0)
+                            ax1.text(idx, 4.55, label, ha='center', va='top', fontsize=8, rotation=45, linespacing=1.0)
 
                         plt.tight_layout()
                         st.pyplot(fig1)
@@ -551,5 +551,6 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
