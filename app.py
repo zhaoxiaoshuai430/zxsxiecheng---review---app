@@ -410,27 +410,35 @@ elif page == "📈 评论维度分析":
                 else:
                     all_scores = pd.Series(new_scores).sort_values(ascending=False)
 
-                    # 调整列的比例，使柱状图占据更多空间
-                    col1, _ = st.columns([3, 1])
-                    with col1:
-                        st.subheader("📊 柱状图：各维度评分")
+                    # 单列布局，扩大图表区域
+                    with st.container():
+                        st.subheader("📊 柱状图：各维度评分（标注在柱子下方）")
+
                         filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
-                        fig1, ax1 = plt.subplots(figsize=(10, 6))
-                        colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
-                        pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
+                        fig1, ax1 = plt.subplots(figsize=(12, 6))  # 宽一些更清晰
+
+                        # 绘制柱状图
+                        bars = pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=['green' if v >= 4.78 else 'red' for v in filtered_scores.values()], alpha=0.8)
+
                         ax1.set_ylabel("评分（满分5.0）")
                         ax1.set_ylim(4.5, 5.0)
                         ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
                         ax1.text(0.02, 4.8, '优秀线 4.78', transform=ax1.transData, fontsize=10, color='orange')
-                        plt.xticks(rotation=45, ha='right')
+
+                        # 清除默认的 x 轴标签（我们要自定义）
+                        ax1.set_xticks([])
+                        ax1.tick_params(axis='x', which='both', length=0)  # 隐藏刻度线
+
+                        # 在每个柱子下方添加文本标签：维度 + 评分
+                        for idx, (dimension, score) in enumerate(filtered_scores.items()):
+                            color = "✅" if score >= 4.78 else "❌"
+                            label = f"{color} {dimension}\n{score:.2f}"
+                            ax1.text(idx, 4.48, label, ha='center', va='top', fontsize=9, rotation=0, linespacing=1.0)
+
                         plt.tight_layout()
                         st.pyplot(fig1)
 
-                        # 将具体文字导入到柱状图下面
-                        for dimension, score in all_scores.items():
-                            color = "🟢" if score >= 4.78 else "🔴"
-                            st.markdown(f"{color} **{dimension}**: {score:.2f}")
-
+                    # 优化建议部分保持不变
                     st.subheader("💡 优化建议（可修改）")
                     needs_improvement = all_scores[all_scores < 4.78]
                     if len(needs_improvement) == 0:
@@ -441,6 +449,7 @@ elif page == "📈 评论维度分析":
                             st.markdown(f"### 📌 {dim} ({score:.2f})")
                             st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
+                    # 下载功能
                     excel_data = to_excel(df)
                     b64 = base64.b64encode(excel_data).decode()
                     href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
@@ -448,7 +457,6 @@ elif page == "📈 评论维度分析":
 
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
-
 # ============ 4. 智能评论回复（增强版） ============
 elif page == "💬 智能评论回复":
     st.title("智能评论回复生成器")
@@ -543,4 +551,5 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
