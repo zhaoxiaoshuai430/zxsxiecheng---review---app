@@ -412,7 +412,7 @@ elif page == "📈 评论维度分析":
 
                     # 调整列的比例，使柱状图占据更多空间
                     col1, _ = st.columns([3, 1])
-                with col1:
+               with col1:
                     st.subheader("📊 柱状图：各维度评分")
                     filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
                     fig1, ax1 = plt.subplots(figsize=(10, 6))
@@ -426,13 +426,15 @@ elif page == "📈 评论维度分析":
                     plt.tight_layout()
                     st.pyplot(fig1)
                 
-                    # ✅ 替换为横向排列的评分标签
+                    # ✅ 替换为表格形式展示各维度评分
                     st.markdown("### 🔽 各维度评分")
                     if len(all_scores) > 0:
-                        cols = st.columns(len(all_scores))  # 每个维度一个列
-                        for idx, (dimension, score) in enumerate(all_scores.items()):
-                            emoji = "🟢" if score >= 4.78 else "🔴"
-                            cols[idx].markdown(f"{emoji} **{dimension}**<br>{score:.2f}", unsafe_allow_html=True)
+                        table_data = []
+                        for dimension, score in all_scores.items():
+                            table_data.append([dimension, f"{score:.2f}"])
+                        
+                        df_table = pd.DataFrame(table_data, columns=["维度", "评分"])
+                        st.table(df_table)
                     else:
                         st.caption("暂无评分数据")
 
@@ -547,6 +549,7 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
