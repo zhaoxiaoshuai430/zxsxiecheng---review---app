@@ -466,7 +466,6 @@ elif page == "📈 评论维度分析":
             st.error(f"❌ 数据处理失败：{str(e)}")
 
 # ============ 4. 智能评论回复（增强版） ============
-# ============ 4. 智能评论回复（三选一：同风格多样性） ============
 elif page == "💬 智能评论回复":
     st.title("💬 智能评论回复生成器（三条同风格）")
 
@@ -515,7 +514,7 @@ elif page == "💬 智能评论回复":
                         review_source,
                         st.session_state.hotel_location,
                         style=single_style,
-                        extra_hint=variation_hint  # 添加微调提示
+                        extra_hint=variation_hint
                     )
                     raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
                     reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
@@ -569,7 +568,7 @@ elif page == "💬 智能评论回复":
                             })
                             st.success(f"✅ 已保存【{single_style}】风格 · 版本{idx+1}")
 
-    # 历史记录（保持不变）
+    # 历史记录
     if st.session_state.history:
         st.subheader("🕒 历史记录")
         for idx, h in enumerate(reversed(st.session_state.history)):
@@ -588,5 +587,6 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
