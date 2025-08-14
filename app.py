@@ -470,8 +470,9 @@ elif page == "📈 评论维度分析":
             st.error(f"❌ 数据处理失败：{str(e)}")
 
 # ============ 4. 智能评论回复（增强版） ============
+# ============ 4. 智能评论回复（同风格三条回复版） ============
 elif page == "💬 智能评论回复":
-    st.title("💬 智能评论回复生成器")
+    st.title("💬 智能评论回复生成器（同风格三条回复）")
 
     try:
         QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
@@ -494,66 +495,66 @@ elif page == "💬 智能评论回复":
     with col2:
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
-        reply_style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默", "诗意", "简洁"])
+        style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默"], index=0)
 
-    if st.button("✨ 生成回复", type="primary"):
+    if st.button("✨ 生成三条回复", type="primary"):
         if not review_input.strip():
             st.warning("请输入评论内容！")
         else:
-            with st.spinner("🧠 正在调用AI生成回复..."):
-                prompt = generate_prompt(
-                    review_input, guest_name,
-                    st.session_state.hotel_name,
-                    st.session_state.hotel_nickname,
-                    review_source,
-                    st.session_state.hotel_location,
-                    style=reply_style
-                )
-                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
-                reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
-                word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
+            st.subheader(f"🔄 正在生成 {style} 风格的三条回复...")
+            with st.spinner("AI 正在创作中，请稍候..."):
 
-            st.markdown(f"""
-            <div style="background-color: #f0f2f6; color: #000000; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6;">
-            {reply}
-            </div>
-            <p style="color: #666; font-size: 14px; margin-top: 4px;">
-            🔤 字数：{word_count} / 250（目标区间：150–250）
-            </p>
-            """, unsafe_allow_html=True)
+                # 存储三条回复
+                generated_replies = []
 
-            # 使用原生 Streamlit 复制功能（更稳定）
-            st.code(reply, language="text")
+                for i in range(3):
+                    with st.spinner(f"生成第 {i+1} 条回复..."):
+                        prompt = generate_prompt(
+                            review_input, guest_name,
+                            st.session_state.hotel_name,
+                            st.session_state.hotel_nickname,
+                            review_source,
+                            st.session_state.hotel_location,
+                            style=style
+                        )
+                        # 添加变化因素，确保三条回复不同
+                        if i == 1:
+                            prompt += " 请用稍微不同的表达方式。"
+                        elif i == 2:
+                            prompt += " 请用另一种不同的表达方式。"
+                            
+                        raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
+                        reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
+                        word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
+                        generated_replies.append({
+                            "reply": reply,
+                            "word_count": word_count,
+                            "number": i+1
+                        })
+                        time.sleep(0.5)  # 避免API调用过快
 
-            if st.button("📋 复制到剪贴板"):
-                st.session_state.clipboard = reply
-                st.success("已复制到剪贴板！")
+            st.success("✅ 三条回复生成完成！")
 
-            if st.button("💾 保存到历史"):
-                st.session_state.history.append({
-                    "time": time.strftime("%H:%M"),
-                    "hotel": st.session_state.hotel_name,
-                    "name": guest_name,
-                    "review": review_input[:50] + "...",
-                    "reply": reply,
-                    "word_count": word_count,
-                    "style": reply_style
-                })
-                st.success("✅ 已保存至历史记录")
+            # 展示三条回复
+            st.subheader("📌 三条同风格不同表达的回复")
 
-    if st.session_state.history:
-        st.subheader("🕒 历史记录")
-        for idx, h in enumerate(st.session_state.history):
-            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']} | {h['word_count']}字 | 风格：{h['style']}"):
-                st.markdown(f"""
-                <div style="background-color: #f0f2f6; color: #000000; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6;">
-                {h['reply']}
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button(f"🗑️ 删除记录", key=f"del_{idx}"):
-                    st.session_state.history.pop(idx)
-                    st.rerun()
+            for data in generated_replies:
+                with st.expander(f"第 {data['number']} 条回复 | {data['word_count']}字", expanded=True):
+                    st.markdown(f"""
+                    <div style="background-color: #f0f2f6; color: #000000; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6; border: 1px solid #ddd;">
+                    {data['reply']}
+                    </div>
+                    <p style="color: #666; font-size: 14px; margin-top: 4px;">
+                    🔤 字数：{data['word_count']} / 250
+                    </p>
+                    """, unsafe_allow_html=True)
+
+                    # 每条回复都提供复制按钮
+                    if st.button(f"📋 复制此回复", key=f"copy_{data['number']}"):
+                        st.session_state.clipboard = data['reply']
+                        st.success("已复制！")
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
