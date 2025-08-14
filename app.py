@@ -541,29 +541,35 @@ elif page == "💬 智能评论回复":
                 st.success("✅ 三条回复生成完成！点击下方切换查看。")
 
     # 展示当前选中的回复（如果有）
-    if st.session_state.generated_replies:
-        current = st.session_state.generated_replies[st.session_state.current_reply_index]
-        st.markdown("### 当前回复")
-        st.markdown(f"""
-        <div style="background-color: #f0f2f6; color: #000000; padding: 16px; border-radius: 8px; font-size: 15px; line-height: 1.7; border: 1px solid #ddd;">
-        {current['reply']}
-        </div>
-        <p style="color: #666; font-size: 14px; margin-top: 6px;">
-        🔤 字数：{current['word_count']} / 200–250 &nbsp;|&nbsp; 📌 第 {current['number']} 条
-        </p>
-        """, unsafe_allow_html=True)
+if st.session_state.generated_replies:
+    current = st.session_state.generated_replies[st.session_state.current_reply_index]
+    st.markdown("### 当前回复")
+    st.markdown(f"""
+    <div style="background-color: #f0f2f6; color: #000000; padding: 16px; border-radius: 8px; font-size: 15px; line-height: 1.7; border: 1px solid #ddd;">
+    {current['reply']}
+    </div>
+    <p style="color: #666; font-size: 14px; margin-top: 6px;">
+    🔤 字数：{current['word_count']} / 200–250 &nbsp;|&nbsp; 📌 第 {current['number']} 条
+    </p>
+    """, unsafe_allow_html=True)
 
-        # 切换按钮
-        col_a, col_b = st.columns([1, 1])
-        with col_a:
-            if st.button("🔄 切换到下一条回复"):
-    next_index = (st.session_state.current_reply_index + 1) % 3
-    st.session_state.current_reply_index = next_index
-    st.rerun()  # 确保这里执行了
+    # 切换按钮
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        if st.button("🔄 切换到下一条回复"):
+            next_index = (st.session_state.current_reply_index + 1) % 3  # 正确缩进
+            st.session_state.current_reply_index = next_index  # 正确缩进
+            st.rerun()  # 正确缩进并确保这里执行了
+
+    with col_b:
+        if st.button("📋 复制当前回复"):
+            st.session_state.clipboard = current['reply']
+            st.success("已复制到剪贴板！")
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
 
