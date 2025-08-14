@@ -557,17 +557,13 @@ elif page == "💬 智能评论回复":
         col_a, col_b = st.columns([1, 1])
         with col_a:
             if st.button("🔄 切换到下一条回复"):
-                next_index = (st.session_state.current_reply_index + 1) % 3
-                st.session_state.current_reply_index = next_index
-                st.experimental_rerun()  # 重新运行以更新显示
-
-        with col_b:
-            if st.button("📋 复制当前回复"):
-                st.session_state.clipboard = current['reply']
-                st.success("已复制到剪贴板！")
+    next_index = (st.session_state.current_reply_index + 1) % 3
+    st.session_state.current_reply_index = next_index
+    st.rerun()  # 确保这里执行了
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
 
