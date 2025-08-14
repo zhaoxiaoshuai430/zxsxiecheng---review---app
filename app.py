@@ -34,6 +34,16 @@ if 'hotel_nickname' not in st.session_state:
 if 'hotel_location' not in st.session_state:
     st.session_state.hotel_location = "该城市某处"
 
+# ✅ 关键修复：统一初始化所有 session_state 变量
+if 'generated_replies' not in st.session_state:
+    st.session_state.generated_replies = []
+
+if 'current_reply_index' not in st.session_state:
+    st.session_state.current_reply_index = 0
+
+if 'clipboard' not in st.session_state:
+    st.session_state.clipboard = ""
+
 # ==================== 工具函数：Excel 导出 ====================
 def to_excel(df):
     output = BytesIO()
@@ -274,21 +284,29 @@ def call_qwen_api(prompt: str, api_key: str) -> str:
     except Exception as e:
         return f"🚨 请求失败：{str(e)}"
 
-def truncate_to_word_count(text: str, min_words=150, max_words=250) -> str:
-    """按汉字字符数截断文本"""
-    words = [c for c in text if c.isalnum() or c in '，。！？；：""''（）【】《》、']
-    content = ''.join(words)
+def truncate_to_word_count(text: str, min_words=200, max_words=250) -> str:
+    """按汉字字符数截断文本，确保自然断句"""
+    # 只保留汉字、字母、常用标点
+    chars = [c for c in text if c.isalnum() or c in '，。！？；：""''（）【】《》、']
+    content = ''.join(chars)
+    
     if len(content) <= max_words:
         return content
-    else:
-        truncated = content[:max_words]
-        for punct in ['。', '！', '？']:
-            if punct in truncated:
-                truncated = truncated[:truncated.rfind(punct) + 1]
+    
+    # 尝试在句末断开
+    truncated = content[:max_words]
+    for punct in ['。', '！', '？']:
+        if punct in truncated:
+            last_punct = truncated.rfind(punct) + 1
+            if last_punct >= min_words:
+                truncated = truncated[:last_punct]
                 break
-        if len(truncated) < min_words:
-            truncated = content[:max_words]
-        return truncated
+    
+    # 如果太短，直接截断
+    if len(truncated) < min_words:
+        truncated = content[:max_words]
+    
+    return truncated
 
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
@@ -468,10 +486,12 @@ elif page == "📈 评论维度分析":
 
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
+
 # ============ 4. 智能评论回复（同风格三条回复版） ============
 elif page == "💬 智能评论回复":
     st.title("💬 智能评论回复生成器（点击切换）")
 
+    # ✅ 统一从 secrets 或环境变量获取 API Key
     try:
         QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
     except KeyError:
@@ -494,12 +514,6 @@ elif page == "💬 智能评论回复":
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
         style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默"], index=0)
-
-    # 初始化 session_state 中的回复列表和当前索引
-    if "generated_replies" not in st.session_state:
-        st.session_state.generated_replies = []
-    if "current_reply_index" not in st.session_state:
-        st.session_state.current_reply_index = 0
 
     if st.button("✨ 生成三条回复", type="primary"):
         if not review_input.strip():
@@ -524,7 +538,6 @@ elif page == "💬 智能评论回复":
                         prompt += "\n\n请换一种全新的表达方式，避免重复之前的措辞。"
 
                     raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
-                    # 确保字数在 200-250 之间
                     reply = truncate_to_word_count(raw_reply, min_words=200, max_words=250)
                     word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
@@ -533,43 +546,38 @@ elif page == "💬 智能评论回复":
                         "word_count": word_count,
                         "number": i + 1
                     })
-                    time.sleep(0.5)  # 避免 API 调用过快
+                    time.sleep(0.5)  # 避免调用过快
 
-                # 保存到 session_state
                 st.session_state.generated_replies = replies
                 st.session_state.current_reply_index = 0
                 st.success("✅ 三条回复生成完成！点击下方切换查看。")
 
-    # 展示当前选中的回复（如果有）
-if st.session_state.generated_replies:
-    current = st.session_state.generated_replies[st.session_state.current_reply_index]
-    st.markdown("### 当前回复")
-    st.markdown(f"""
-    <div style="background-color: #f0f2f6; color: #000000; padding: 16px; border-radius: 8px; font-size: 15px; line-height: 1.7; border: 1px solid #ddd;">
-    {current['reply']}
-    </div>
-    <p style="color: #666; font-size: 14px; margin-top: 6px;">
-    🔤 字数：{current['word_count']} / 200–250 &nbsp;|&nbsp; 📌 第 {current['number']} 条
-    </p>
-    """, unsafe_allow_html=True)
+    # ✅ 展示当前选中的回复（如果有）
+    if st.session_state.generated_replies:
+        current = st.session_state.generated_replies[st.session_state.current_reply_index]
+        st.markdown("### 当前回复")
+        st.markdown(f"""
+        <div style="background-color: #f0f2f6; color: #000000; padding: 16px; border-radius: 8px; font-size: 15px; line-height: 1.7; border: 1px solid #ddd;">
+        {current['reply']}
+        </div>
+        <p style="color: #666; font-size: 14px; margin-top: 6px;">
+        🔤 字数：{current['word_count']} / 200–250 &nbsp;|&nbsp; 📌 第 {current['number']} 条
+        </p>
+        """, unsafe_allow_html=True)
 
-    # 切换按钮
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        if st.button("🔄 切换到下一条回复"):
-            next_index = (st.session_state.current_reply_index + 1) % 3  # 正确缩进
-            st.session_state.current_reply_index = next_index  # 正确缩进
-            st.rerun()  # 正确缩进并确保这里执行了
+        # 切换按钮
+        col_a, col_b = st.columns([1, 1])
+        with col_a:
+            if st.button("🔄 切换到下一条回复"):
+                next_index = (st.session_state.current_reply_index + 1) % 3
+                st.session_state.current_reply_index = next_index
+                st.rerun()
 
-    with col_b:
-        if st.button("📋 复制当前回复"):
-            st.session_state.clipboard = current['reply']
-            st.success("已复制到剪贴板！")
+        with col_b:
+            if st.button("📋 复制当前回复"):
+                st.session_state.clipboard = current['reply']
+                st.success("已复制到剪贴板！")
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
-
-
-
-
