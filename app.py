@@ -466,8 +466,9 @@ elif page == "📈 评论维度分析":
             st.error(f"❌ 数据处理失败：{str(e)}")
 
 # ============ 4. 智能评论回复（增强版） ============
+# ============ 4. 智能评论回复（三选一：同风格多样性） ============
 elif page == "💬 智能评论回复":
-    st.title("💬 智能评论回复生成器")
+    st.title("💬 智能评论回复生成器（三条同风格）")
 
     try:
         QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
@@ -490,66 +491,91 @@ elif page == "💬 智能评论回复":
     with col2:
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
-        style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默", "诗意", "网络"])
+        single_style = st.selectbox(
+            "选择统一回复风格",
+            ["标准", "正式", "亲切", "幽默", "诗意", "简洁"],
+            index=2  # 默认选“亲切”
+        )
 
-    if st.button("✨ 生成回复", type="primary"):
+    if st.button("✨ 生成三条同风格回复", type="primary"):
         if not review_input.strip():
             st.warning("请输入评论内容！")
         else:
-            with st.spinner("正在生成回复..."):
-                prompt = generate_prompt(
-                    review_input, guest_name,
-                    st.session_state.hotel_name,
-                    st.session_state.hotel_nickname,
-                    review_source,
-                    st.session_state.hotel_location,
-                    style=style
-                )
-                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
-                reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
-                word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
+            with st.spinner(f"正在生成3条【{single_style}】风格的回复..."):
 
-            st.markdown(f"""
-            <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
-            {reply}
-            </div>
-            <p style="color: #888; font-size: 14px; margin-top: 4px;">
-            🔤 字数：{word_count} / 250（目标区间：200–250）
-            </p>
-            """, unsafe_allow_html=True)
+                replies = []
+                word_counts = []
+                # 生成3条同风格、但不同表达的回复
+                for i in range(3):
+                    variation_hint = ["", "（换一种表达方式）", "（再换一种说法）"][i]
+                    prompt = generate_prompt(
+                        review_input, guest_name,
+                        st.session_state.hotel_name,
+                        st.session_state.hotel_nickname,
+                        review_source,
+                        st.session_state.hotel_location,
+                        style=single_style,
+                        extra_hint=variation_hint  # 添加微调提示
+                    )
+                    raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
+                    reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
+                    word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
-            st.markdown("""
-            <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
-            <button id="copy-btn" style="margin-top: 10px; padding: 8px 16px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                📋 复制回复
-            </button>
-            <script>
-            const btn = document.getElementById('copy-btn');
-            const text = document.querySelector('div[style*="background-color: #000000"]').innerText;
-            const clipboard = new ClipboardJS('#copy-btn', { text: () => text });
-            clipboard.on('success', function(e) {
-                btn.innerText = '✅ 已复制！';
-                setTimeout(() => { btn.innerText = '📋 复制回复'; }, 2000);
-            });
-            </script>
-            """, unsafe_allow_html=True)
+                    replies.append(reply)
+                    word_counts.append(word_count)
 
-            if st.button("💾 保存到历史"):
-                st.session_state.history.append({
-                    "time": time.strftime("%H:%M"),
-                    "hotel": st.session_state.hotel_name,
-                    "name": guest_name,
-                    "review": review_input[:50] + "...",
-                    "reply": reply,
-                    "word_count": word_count
-                })
-                st.success("✅ 已保存至历史记录")
+                # 显示三条同风格回复
+                cols = st.columns(3)
+                for idx, reply in enumerate(replies):
+                    with cols[idx]:
+                        st.markdown(f"### 🔄 同风格 · 版本 {idx+1}")
+                        st.markdown(f"""
+                        <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px; min-height: 300px;">
+                        {reply}
+                        </div>
+                        <p style="color: #888; font-size: 14px; margin-top: 4px;">
+                        🔤 字数：{word_counts[idx]} / 250
+                        </p>
+                        """, unsafe_allow_html=True)
 
-    # 历史记录
+                        # 复制按钮
+                        st.markdown(f"""
+                        <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+                        <button id="copy_{idx}" style="margin-top: 5px; padding: 6px 12px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+                            📋 复制
+                        </button>
+                        <script>
+                        const btn_{idx} = document.getElementById('copy_{idx}');
+                        const text_{idx} = `{reply}`.replace(/`/g, "\\`");
+                        const clipboard_{idx} = new ClipboardJS('#copy_{idx}', {{ text: () => text_{idx} }});
+                        clipboard_{idx}.on('success', function(e) {{
+                            btn_{idx}.innerText = '✅ 已复制！';
+                            setTimeout(() => {{ btn_{idx}.innerText = '📋 复制'; }}, 2000);
+                        }});
+                        </script>
+                        """, unsafe_allow_html=True)
+
+                        # 保存该条
+                        if st.button(f"💾 保存此条 (版本{idx+1})", key=f"save_{idx}"):
+                            st.session_state.history.append({
+                                "time": time.strftime("%H:%M"),
+                                "hotel": st.session_state.hotel_name,
+                                "name": guest_name,
+                                "review": review_input[:50] + "...",
+                                "reply": reply,
+                                "word_count": word_counts[idx],
+                                "style": single_style,
+                                "version": idx+1
+                            })
+                            st.success(f"✅ 已保存【{single_style}】风格 · 版本{idx+1}")
+
+    # 历史记录（保持不变）
     if st.session_state.history:
         st.subheader("🕒 历史记录")
         for idx, h in enumerate(reversed(st.session_state.history)):
-            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']} | {h['word_count']}字"):
+            version_tag = f" | V{h.get('version', '')}" if 'version' in h else ""
+            style_tag = f" | {h.get('style', '标准')}" if 'style' in h else ""
+            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']}{style_tag}{version_tag} | {h['word_count']}字"):
                 st.markdown(f"""
                 <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
                 {h['reply']}
@@ -562,4 +588,5 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
 
