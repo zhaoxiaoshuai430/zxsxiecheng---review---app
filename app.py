@@ -157,53 +157,8 @@ SUGGESTIONS = {
 }
 
 # ==================== 智能评论回复相关函数 ====================
-def extract_aspects_and_sentiment(review: str):
-    """模拟情感与方面提取（实际项目中应替换为真实NLP模型）"""
-    aspects = []
-    lower_review = review.lower()
-
-    # 简单关键词匹配（仅作演示）
-    if '交通' in lower_review or '位置' in lower_review or '地铁' in lower_review:
-        aspects.append('交通')
-    if '服务' in lower_review or '前台' in lower_review or '热情' in lower_review:
-        aspects.append('服务')
-    if '干净' in lower_review or '卫生' in lower_review or '整洁' in lower_review:
-        aspects.append('卫生')
-    if '早餐' in lower_review or '餐饮' in lower_review:
-        aspects.append('早餐')
-    if '划算' in lower_review or '价格' in lower_review or '性价比' in lower_review:
-        aspects.append('性价比')
-    if '安静' in lower_review or '环境' in lower_review or '风景' in lower_review:
-        aspects.append('环境')
-    if '设施' in lower_review or '设备' in lower_review or '老旧' in lower_review or '损坏' in lower_review:
-        aspects.append('设施')
-
-    # 情感判断
-    positive_words = ['好', '棒', '赞', '满意', '推荐', '温馨', '舒服', '愉快']
-    negative_words = ['差', '糟', '脏', '吵', '坏', '失望', '问题', '难用', '破损']
-
-    pos_count = sum(1 for w in positive_words if w in lower_review)
-    neg_count = sum(1 for w in negative_words if w in lower_review)
-
-    sentiment = "正面" if pos_count > neg_count else "负面" if neg_count > pos_count else "中性"
-
-    has_praise = pos_count > 0
-    has_complaint = neg_count > 0
-    has_facility_issue = any(w in lower_review for w in ['老旧', '损坏', '坏了', '故障', '不工作'])
-    has_noise = any(w in lower_review for w in ['吵', '噪音', '响', '闹'])
-
-    return {
-        'aspects': list(set(aspects)),
-        'sentiment': sentiment,
-        'has_praise': has_praise,
-        'has_complaint': has_complaint,
-        'has_facility_issue': has_facility_issue,
-        'has_noise': has_noise
-    }
-
-def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nickname: str,
-                    review_source: str, hotel_location: str, response_style: str = None):
-    """生成给大模型的提示词（增强版，支持地理位置 + 回复风格）"""
+def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nickname: str, review_source: str, hotel_location: str):
+    """生成给大模型的提示词（增强版，支持地理位置）"""
     info = extract_aspects_and_sentiment(review)
 
     tag_map = {
@@ -237,18 +192,6 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
     if info['has_noise']:
         additional_notes.append("提及噪音问题，请承诺‘加强隔音管理’或‘优化客房分配策略’。")
 
-    # 默认风格
-    style_instruction = "使用正式、专业、温暖的语气，适合酒店官方形象。"
-    if response_style:
-        style_map = {
-            "正式": "使用正式、庄重、专业的语气，体现酒店权威与规范。",
-            "亲切": "使用温馨、口语化、像朋友一样的语气，让客人感到被关怀。",
-            "幽默": "在不失礼的前提下，加入适度轻松幽默的表达，让人会心一笑。",
-            "诗意": "用略带文艺、优美抒情的语言风格，营造浪漫氛围。",
-            "简洁": "语言精炼直接，重点突出，避免冗余表达。"
-        }
-        style_instruction = style_map.get(response_style.strip(), style_instruction)
-
     prompt = f"""
     【角色设定】
     你是 {hotel_name} 的官方客服代表，昵称为“{hotel_nickname}”。你正在回复一位客人在 {review_source} 平台发布的评论。
@@ -260,7 +203,7 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
     - 若近地铁/景区：可强调“便捷的交通/步行即可抵达景点”
 
     【任务要求】
-    请撰写一条得体、有温度的中文回复，用于公开发布。必须满足以下所有规则：
+    请撰写一条正式、得体、有温度的中文回复，用于公开发布。必须满足以下所有规则：
 
     1. 开头必须包含以下标签：
        {tags}
@@ -272,18 +215,15 @@ def generate_prompt(review: str, guest_name: str, hotel_name: str, hotel_nicknam
     3. 回复语气必须符合以下情感导向：
        {sentiment_guidance}
 
-    4. 风格要求：
-       {style_instruction}
-
-    5. 内容结构建议：
+    4. 内容结构建议：
        - 正面评论：感谢 → 具体回应表扬点 → 结合地理位置说明优势 → 表达持续努力的决心 → 邀请再次光临
        - 负面评论：致歉 → 承认问题 → 说明改进措施 → 可提及位置优势弥补短板 → 邀请再次体验
        - 中性评论：感谢 → 简要回应内容 → 提及位置便利性 → 表达欢迎之意
 
-    6. 字数严格控制在 150–250 个汉字之间（不含标签）。
-    7. 禁止使用诗句、网络用语、过度夸张词汇（如“极其”“完美”）。
-    8. 结尾必须包含类似“期待您再次光临，祝您生活愉快！”的表达。
-    9. 不提及 API、模型、技术细节或内部流程。
+    5. 字数严格控制在 150–250 个汉字之间（不含标签）。
+    6. 禁止使用诗句、网络用语、过度夸张词汇（如“极其”“完美”）。
+    7. 结尾必须包含类似“期待您再次光临，祝您生活愉快！”的表达。
+    8. 不提及 API、模型、技术细节或内部流程。
 
     【附加提示】
     {' '.join(additional_notes) if additional_notes else '无特殊注意事项。'}
@@ -308,13 +248,13 @@ def call_qwen_api(prompt: str, api_key: str) -> str:
         },
         "parameters": {
             "result_format": "text",
-            "max_tokens": 300,
+            "max_tokens": 300,  # 支持更长输出
             "temperature": 0.6,
             "top_p": 0.85
         }
     }
     try:
-        response = requests.post("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+        response = requests.post("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", 
                                headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             result = response.json()
@@ -323,12 +263,6 @@ def call_qwen_api(prompt: str, api_key: str) -> str:
             return f"❌ API 错误 [{response.status_code}]：{response.text}"
     except Exception as e:
         return f"🚨 请求失败：{str(e)}"
-
-def call_qwen_api_multi(prompts: list, api_key: str) -> list:
-    """并发调用API生成多条回复"""
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = list(executor.map(lambda p: call_qwen_api(p, api_key), prompts))
-    return results
 
 def truncate_to_word_count(text: str, min_words=150, max_words=250) -> str:
     """按汉字字符数截断文本（改为150–250）"""
@@ -345,7 +279,6 @@ def truncate_to_word_count(text: str, min_words=150, max_words=250) -> str:
         if len(truncated) < min_words:
             truncated = content[:max_words]
         return truncated
-
 
 # ==================== 侧边栏导航 ====================
 st.sidebar.title("🏨 酒店OTA")
@@ -556,95 +489,59 @@ elif page == "💬 智能评论回复":
     with col2:
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
-        response_style = st.selectbox(
-            "回复风格（可选）",
-            options=["不指定", "正式", "亲切", "幽默", "诗意", "简洁"],
-            index=0,
-            help="选择一种风格，让回复更具个性。不选则使用默认专业风格。"
-        )
 
-    if st.button("✨ 生成三条回复", type="primary"):
+    if st.button("✨ 生成回复", type="primary"):
         if not review_input.strip():
             st.warning("请输入评论内容！")
         else:
-            with st.spinner("正在生成三条不同风格的回复..."):
+            with st.spinner("正在生成回复..."):
+                prompt = generate_prompt(
+                    review_input, guest_name,
+                    st.session_state.hotel_name,
+                    st.session_state.hotel_nickname,
+                    review_source,
+                    st.session_state.get('hotel_location', '该城市某处')
+                )
+                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
+                reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
+                word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
-                # 定义三种风格策略
-                style_options = ["正式", "亲切", "简洁"]
+            st.markdown(f"""
+            <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
+            {reply}
+            </div>
+            <p style="color: #888; font-size: 14px; margin-top: 4px;">
+            🔤 字数：{word_count} / 250（目标区间：150–250）
+            </p>
+            """, unsafe_allow_html=True)
 
-                # 如果用户指定了风格，优先使用它作为主风格，其余为备选
-                if response_style and response_style != "不指定":
-                    style_options = [response_style, "正式", "亲切"]
+            st.markdown("""
+            <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+            <button id="copy-btn" style="margin-top: 10px; padding: 8px 16px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                📋 复制回复
+            </button>
+            <script>
+            const btn = document.getElementById('copy-btn');
+            const text = document.querySelector('div[style*="background-color: #000000"]').innerText;
+            const clipboard = new ClipboardJS('#copy-btn', { text: () => text });
+            clipboard.on('success', function(e) {
+                btn.innerText = '✅ 已复制！';
+                setTimeout(() => { btn.innerText = '📋 复制回复'; }, 2000);
+            });
+            </script>
+            """, unsafe_allow_html=True)
 
-                # 生成三个不同的 prompt
-                prompts = [
-                    generate_prompt(
-                        review_input, guest_name,
-                        st.session_state.hotel_name,
-                        st.session_state.hotel_nickname,
-                        review_source,
-                        st.session_state.get('hotel_location', '该城市某处'),
-                        style
-                    )
-                    for style in style_options
-                ]
+            if st.button("💾 保存到历史"):
+                st.session_state.history.append({
+                    "time": time.strftime("%H:%M"),
+                    "hotel": st.session_state.hotel_name,
+                    "name": guest_name,
+                    "review": review_input[:50] + "...",
+                    "reply": reply,
+                    "word_count": word_count
+                })
+                st.success("已保存至历史记录")
 
-                # 并行调用 API
-                raw_replies = call_qwen_api_multi(prompts, QWEN_API_KEY)
-
-                # 处理每条回复
-                replies = []
-                word_counts = []
-                for reply in raw_replies:
-                    if not reply.startswith("❌") and not reply.startswith("🚨"):
-                        cleaned = truncate_to_word_count(reply)
-                    else:
-                        cleaned = reply
-                    replies.append(cleaned)
-                    word_count = len([c for c in cleaned if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
-                    word_counts.append(word_count)
-
-            # 显示三条回复供选择
-            st.markdown("### 🎯 三条候选回复")
-
-            for i, (reply, wc) in enumerate(zip(replies, word_counts)):
-                with st.expander(f"回复 {i+1} | 字数：{wc}"):
-                    st.markdown(f"""
-                    <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6;">
-                    {reply}
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    # 复制按钮
-                    st.markdown(f"""
-                    <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
-                    <button id="copy-btn-{i}" style="margin-top: 8px; padding: 6px 12px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
-                        📋 复制此回复
-                    </button>
-                    <script>
-                    const btn{i} = document.getElementById('copy-btn-{i}');
-                    const text{i} = `{reply.replace("`", "\\`")}`;
-                    const clipboard{i} = new ClipboardJS('#copy-btn-{i}', {{ text: () => text{i} }});
-                    clipboard{i}.on('success', function(e) {{
-                        btn{i}.innerText = '✅ 已复制！';
-                        setTimeout(() => {{ btn{i}.innerText = '📋 复制此回复'; }}, 2000);
-                    }});
-                    </script>
-                    """, unsafe_allow_html=True)
-
-                    # 保存按钮
-                    if st.button(f"💾 保存第{i+1}条", key=f"save_{i}"):
-                        st.session_state.history.append({
-                            "time": time.strftime("%H:%M"),
-                            "hotel": st.session_state.hotel_name,
-                            "name": guest_name,
-                            "review": review_input[:50] + "...",
-                            "reply": reply,
-                            "word_count": wc
-                        })
-                        st.success(f"第{i+1}条回复已保存至历史记录")
-
-    # 历史记录
     if st.session_state.history:
         st.subheader("🕒 历史记录")
         for idx, h in enumerate(reversed(st.session_state.history)):
@@ -657,10 +554,10 @@ elif page == "💬 智能评论回复":
                 if st.button(f"🗑️ 删除记录 {idx}", key=f"del_{idx}"):
                     st.session_state.history.pop(-idx-1)
                     st.rerun()
+
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
-
 
 
 
