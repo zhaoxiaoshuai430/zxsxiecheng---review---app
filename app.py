@@ -513,7 +513,7 @@ elif page == "💬 智能评论回复":
     with col2:
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
-        style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默"], index=0)
+        style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默","文艺"], index=0)
 
     if st.button("✨ 生成三条回复", type="primary"):
         if not review_input.strip():
@@ -581,3 +581,4 @@ elif page == "💬 智能评论回复":
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
+
