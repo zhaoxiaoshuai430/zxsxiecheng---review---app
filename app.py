@@ -312,7 +312,7 @@ hotel_location = st.sidebar.text_input(
 
 if st.sidebar.button("💾 保存配置"):
     st.session_state.hotel_name = hotel_name.strip() or "未命名酒店"
-    st.session_state.hotel_nickname = hotel_nickname.strip() or "小油"
+    st.session_state.hotel_nickname = hotel_nickname.strip() or "小助手"
     st.session_state.hotel_location = hotel_location.strip() or "该城市某处"
     st.sidebar.success("✅ 配置已保存")
 
@@ -412,24 +412,33 @@ elif page == "📈 评论维度分析":
             if not comment_col:
                 st.error("❌ 未找到评论列，请确保包含“评论”或“评价”关键词的列。")
             else:
+                # 提取评论内容中的标签评分
                 new_scores = extract_tags_with_scores(df[comment_col])
+
+                # 读取Excel中已有的维度评分（示例）
                 dimension_cols = ['设施', '卫生', '环境', '服务']
                 existing_scores = {}
                 for col in dimension_cols:
                     if col in df.columns:
-                        existing_scores[col] = df[col].mean()
+                        mean_val = df[col].mean()
+                        if not pd.isna(mean_val):
+                            existing_scores[col] = round(mean_val, 2)
 
+                # 合并新旧评分
                 all_scores = {**new_scores, **existing_scores}
-                all_scores = pd.Series(all_scores).sort_values(ascending=False)
 
-                col1, _ = st.columns([3, 1])
-                with col1:
-                    st.subheader("📊 柱状图：各维度评分")
-                    filtered_scores = {k: v for k, v in all_scores.items() if 4.5 <= v <= 5.0}
-                    if filtered_scores:
+                if len(all_scores) == 0:
+                    st.warning("⚠️ 未提取到任何有效标签评分")
+                else:
+                    all_scores = pd.Series(all_scores).sort_values(ascending=False)
+
+                    # 调整列的比例，使柱状图占据更多空间
+                    col1, _ = st.columns([3, 1])
+                    with col1:
+                        st.subheader("📊 各维度评分分布")
                         fig1, ax1 = plt.subplots(figsize=(10, 6))
-                        colors = ['green' if v >= 4.78 else 'red' for v in filtered_scores.values()]
-                        pd.Series(filtered_scores).plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
+                        colors = ['green' if v >= 4.78 else 'red' for v in all_scores.values]
+                        all_scores.plot(kind='bar', ax=ax1, color=colors, alpha=0.8)
                         ax1.set_ylabel("评分（满分5.0）")
                         ax1.set_ylim(4.5, 5.0)
                         ax1.axhline(y=4.78, color='orange', linestyle='--', linewidth=1)
@@ -437,37 +446,32 @@ elif page == "📈 评论维度分析":
                         plt.xticks(rotation=45, ha='right')
                         plt.tight_layout()
                         st.pyplot(fig1)
-                    else:
-                        st.info("暂无有效评分数据")
 
-                st.markdown("### 🔽 各维度评分")
-                if len(all_scores) > 0:
+                    st.markdown("### 🔽 各维度评分详情")
                     df_table = pd.DataFrame(list(all_scores.items()), columns=["维度", "评分"])
                     st.table(df_table)
-                else:
-                    st.caption("暂无评分数据")
 
-                st.subheader("💡 优化建议（可修改）")
-                needs_improvement = all_scores[all_scores < 4.78]
-                if len(needs_improvement) == 0:
-                    st.success("🎉 所有维度均 ≥ 4.78，表现优秀！")
-                else:
-                    for dim, score in needs_improvement.items():
-                        default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
-                        st.markdown(f"### 📌 {dim} ({score:.2f})")
-                        st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
+                    st.subheader("💡 优化建议（可修改）")
+                    needs_improvement = all_scores[all_scores < 4.78]
+                    if len(needs_improvement) == 0:
+                        st.success("🎉 所有维度均 ≥ 4.78，表现优秀！")
+                    else:
+                        for dim, score in needs_improvement.items():
+                            default_suggestion = SUGGESTIONS.get(dim, "请补充优化建议。")
+                            st.markdown(f"### 📌 {dim} ({score:.2f})")
+                            st.text_area("建议：", value=default_suggestion, height=100, key=f"sug_{dim}")
 
-                excel_data = to_excel(df)
-                b64 = base64.b64encode(excel_data).decode()
-                href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
-                st.markdown(href, unsafe_allow_html=True)
+                    excel_data = to_excel(df)
+                    b64 = base64.b64encode(excel_data).decode()
+                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="原始评论数据.xlsx">📥 下载原始数据</a>'
+                    st.markdown(href, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"❌ 数据处理失败：{str(e)}")
 
 # ============ 4. 智能评论回复（增强版） ============
 elif page == "💬 智能评论回复":
-    st.title("💬 智能评论回复生成器（三条同风格）")
+    st.title("💬 智能评论回复生成器")
 
     try:
         QWEN_API_KEY = st.secrets["QWEN_API_KEY"]
@@ -490,103 +494,66 @@ elif page == "💬 智能评论回复":
     with col2:
         guest_name = st.text_input("客人姓名", "尊敬的宾客")
         review_source = st.selectbox("平台来源", ["携程", "美团", "飞猪", "去哪儿", "抖音"])
-        single_style = st.selectbox(
-            "选择统一回复风格",
-            ["标准", "正式", "亲切", "幽默", "诗意", "简洁"],
-            index=2  # 默认选“亲切”
-        )
+        reply_style = st.selectbox("回复风格", ["标准", "正式", "亲切", "幽默", "诗意", "简洁"])
 
-    if st.button("✨ 生成三条同风格回复", type="primary"):
+    if st.button("✨ 生成回复", type="primary"):
         if not review_input.strip():
             st.warning("请输入评论内容！")
         else:
-            with st.spinner(f"正在生成3条【{single_style}】风格的回复..."):
+            with st.spinner("🧠 正在调用AI生成回复..."):
+                prompt = generate_prompt(
+                    review_input, guest_name,
+                    st.session_state.hotel_name,
+                    st.session_state.hotel_nickname,
+                    review_source,
+                    st.session_state.hotel_location,
+                    style=reply_style
+                )
+                raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
+                reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
+                word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
 
-                replies = []
-                word_counts = []
-                # 生成3条同风格、但不同表达的回复
-                for i in range(3):
-                    variation_hint = ["", "（换一种表达方式）", "（再换一种说法）"][i]
-                    prompt = generate_prompt(
-                        review_input, guest_name,
-                        st.session_state.hotel_name,
-                        st.session_state.hotel_nickname,
-                        review_source,
-                        st.session_state.hotel_location,
-                        style=single_style,
-                        extra_hint=variation_hint
-                    )
-                    raw_reply = call_qwen_api(prompt, api_key=QWEN_API_KEY)
-                    reply = truncate_to_word_count(raw_reply) if not raw_reply.startswith("❌") else raw_reply
-                    word_count = len([c for c in reply if c.isalnum() or c in '，。！？；：""''（）【】《》、'])
+            st.markdown(f"""
+            <div style="background-color: #f0f2f6; color: #000000; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6;">
+            {reply}
+            </div>
+            <p style="color: #666; font-size: 14px; margin-top: 4px;">
+            🔤 字数：{word_count} / 250（目标区间：150–250）
+            </p>
+            """, unsafe_allow_html=True)
 
-                    replies.append(reply)
-                    word_counts.append(word_count)
+            # 使用原生 Streamlit 复制功能（更稳定）
+            st.code(reply, language="text")
 
-                # 显示三条同风格回复
-                cols = st.columns(3)
-                for idx, reply in enumerate(replies):
-                    with cols[idx]:
-                        st.markdown(f"### 🔄 同风格 · 版本 {idx+1}")
-                        st.markdown(f"""
-                        <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px; min-height: 300px;">
-                        {reply}
-                        </div>
-                        <p style="color: #888; font-size: 14px; margin-top: 4px;">
-                        🔤 字数：{word_counts[idx]} / 250
-                        </p>
-                        """, unsafe_allow_html=True)
+            if st.button("📋 复制到剪贴板"):
+                st.session_state.clipboard = reply
+                st.success("已复制到剪贴板！")
 
-                        # 复制按钮
-                        st.markdown(f"""
-                        <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
-                        <button id="copy_{idx}" style="margin-top: 5px; padding: 6px 12px; background: #1f77b4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
-                            📋 复制
-                        </button>
-                        <script>
-                        const btn_{idx} = document.getElementById('copy_{idx}');
-                        const text_{idx} = `{reply}`.replace(/`/g, "\\`");
-                        const clipboard_{idx} = new ClipboardJS('#copy_{idx}', {{ text: () => text_{idx} }});
-                        clipboard_{idx}.on('success', function(e) {{
-                            btn_{idx}.innerText = '✅ 已复制！';
-                            setTimeout(() => {{ btn_{idx}.innerText = '📋 复制'; }}, 2000);
-                        }});
-                        </script>
-                        """, unsafe_allow_html=True)
+            if st.button("💾 保存到历史"):
+                st.session_state.history.append({
+                    "time": time.strftime("%H:%M"),
+                    "hotel": st.session_state.hotel_name,
+                    "name": guest_name,
+                    "review": review_input[:50] + "...",
+                    "reply": reply,
+                    "word_count": word_count,
+                    "style": reply_style
+                })
+                st.success("✅ 已保存至历史记录")
 
-                        # 保存该条
-                        if st.button(f"💾 保存此条 (版本{idx+1})", key=f"save_{idx}"):
-                            st.session_state.history.append({
-                                "time": time.strftime("%H:%M"),
-                                "hotel": st.session_state.hotel_name,
-                                "name": guest_name,
-                                "review": review_input[:50] + "...",
-                                "reply": reply,
-                                "word_count": word_counts[idx],
-                                "style": single_style,
-                                "version": idx+1
-                            })
-                            st.success(f"✅ 已保存【{single_style}】风格 · 版本{idx+1}")
-
-    # 历史记录
     if st.session_state.history:
         st.subheader("🕒 历史记录")
-        for idx, h in enumerate(reversed(st.session_state.history)):
-            version_tag = f" | V{h.get('version', '')}" if 'version' in h else ""
-            style_tag = f" | {h.get('style', '标准')}" if 'style' in h else ""
-            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']}{style_tag}{version_tag} | {h['word_count']}字"):
+        for idx, h in enumerate(st.session_state.history):
+            with st.expander(f"【{h['time']}】{h['hotel']} | {h['name']} | {h['word_count']}字 | 风格：{h['style']}"):
                 st.markdown(f"""
-                <div style="background-color: #000000; color: #ffffff; padding: 12px; border-radius: 6px; font-size: 15px;">
+                <div style="background-color: #f0f2f6; color: #000000; padding: 12px; border-radius: 6px; font-size: 15px; line-height: 1.6;">
                 {h['reply']}
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button(f"🗑️ 删除记录 {idx}", key=f"del_{idx}"):
-                    st.session_state.history.pop(-idx-1)
+                if st.button(f"🗑️ 删除记录", key=f"del_{idx}"):
+                    st.session_state.history.pop(idx)
                     st.rerun()
 
 # ==================== 尾部信息 ====================
 st.sidebar.divider()
 st.sidebar.caption(f"@ 2025 {st.session_state.hotel_nickname} 酒店运营工具")
-
-
-
